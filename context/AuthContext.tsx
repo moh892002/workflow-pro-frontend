@@ -14,7 +14,7 @@ import {
   setDoc,
   serverTimestamp,
 } from "firebase/firestore";
-import { db } from "../services/firebase"; // تأكد من وجود هذا الملف
+import { db } from "../services/firebase";
 
 interface AuthContextType {
   user: User | null;
@@ -26,14 +26,14 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 min
 
 export const AuthProvider = ({ children }: { children?: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
 
   // جلب بيانات المستخدم من Firestore
   const fetchUserFromFirestore = async (
-    userId: string
+    userId: string,
   ): Promise<User | null> => {
     try {
       const userDoc = await getDoc(doc(db, "users", userId));
@@ -55,7 +55,7 @@ export const AuthProvider = ({ children }: { children?: ReactNode }) => {
           ...userData,
           lastUpdated: serverTimestamp(),
         },
-        { merge: true }
+        { merge: true },
       ); // merge للحفاظ على البيانات الأخرى
     } catch (error) {
       console.error("Error saving user to Firestore:", error);
@@ -75,12 +75,22 @@ export const AuthProvider = ({ children }: { children?: ReactNode }) => {
         if (now - last > SESSION_TIMEOUT) {
           logout(); // Session expired
         } else {
-          // جلب البيانات المحدثة من Firestore
+          // Try to fetch from Firestore, but fallback to local DB if it fails
           const firestoreUser = await fetchUserFromFirestore(storedUserId);
 
           if (firestoreUser && firestoreUser.isActive) {
             setUser(firestoreUser); // استخدام البيانات من Firestore
             localStorage.setItem("wfp_last_active", now.toString());
+          } else if (firestoreUser === null) {
+            // Firestore fetch failed, try local DB as fallback
+            const users = DB.users.getAll();
+            const localUser = users.find((u) => u.id === storedUserId);
+            if (localUser && localUser.isActive) {
+              setUser(localUser);
+              localStorage.setItem("wfp_last_active", now.toString());
+            } else {
+              logout(); // User not found or deactivated
+            }
           } else {
             logout(); // User deleted or deactivated
           }
