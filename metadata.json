@@ -1,0 +1,5 @@
+{
+  "name": "WorkFlow Pro",
+  "description": "Enterprise-grade Employee & Task Management System with bilingual support (Arabic/English), role-based access control, and comprehensive reporting dashboards. Implements a local mock database for full functionality.",
+  "requestFramePermissions": []
+}

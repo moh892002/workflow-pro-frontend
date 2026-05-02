@@ -1,0 +1,3 @@
+User-agent: * 
+Allow: / 
+Sitemap: https://workflow-pro-f2edd.web.app/sitemap.xml 
