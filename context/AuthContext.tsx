@@ -7,14 +7,6 @@ import React, {
 } from "react";
 import { User, Role } from "../types";
 import { DB } from "../services/db";
-import {
-  doc,
-  getDoc,
-  updateDoc,
-  setDoc,
-  serverTimestamp,
-} from "firebase/firestore";
-import { db } from "../services/firebase";
 
 interface AuthContextType {
   user: User | null;
@@ -26,45 +18,13 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 min
+const SESSION_TIMEOUT = 30 * 60 * 1000;
 
 export const AuthProvider = ({ children }: { children?: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
 
-  // جلب بيانات المستخدم من Firestore
-  const fetchUserFromFirestore = async (
-    userId: string,
-  ): Promise<User | null> => {
-    try {
-      const userDoc = await getDoc(doc(db, "users", userId));
-      if (userDoc.exists()) {
-        return userDoc.data() as User;
-      }
-    } catch (error) {
-      console.error("Error fetching user from Firestore:", error);
-    }
-    return null;
-  };
-
-  // حفظ المستخدم في Firestore
-  const saveUserToFirestore = async (userData: User) => {
-    try {
-      await setDoc(
-        doc(db, "users", userData.id),
-        {
-          ...userData,
-          lastUpdated: serverTimestamp(),
-        },
-        { merge: true },
-      ); // merge للحفاظ على البيانات الأخرى
-    } catch (error) {
-      console.error("Error saving user to Firestore:", error);
-    }
-  };
-
-  // Check session on load
   useEffect(() => {
-    const checkSession = async () => {
+    const checkSession = () => {
       const storedUserId = localStorage.getItem("wfp_current_user_id");
       const lastActive = localStorage.getItem("wfp_last_active");
 
@@ -73,40 +33,26 @@ export const AuthProvider = ({ children }: { children?: ReactNode }) => {
         const last = parseInt(lastActive, 10);
 
         if (now - last > SESSION_TIMEOUT) {
-          logout(); // Session expired
+          logout();
         } else {
-          // Try to fetch from Firestore, but fallback to local DB if it fails
-          const firestoreUser = await fetchUserFromFirestore(storedUserId);
-
-          if (firestoreUser && firestoreUser.isActive) {
-            setUser(firestoreUser); // استخدام البيانات من Firestore
+          const users = DB.users.getAll();
+          const localUser = users.find((u) => u.id === storedUserId);
+          if (localUser && localUser.isActive) {
+            setUser(localUser);
             localStorage.setItem("wfp_last_active", now.toString());
-          } else if (firestoreUser === null) {
-            // Firestore fetch failed, try local DB as fallback
-            const users = DB.users.getAll();
-            const localUser = users.find((u) => u.id === storedUserId);
-            if (localUser && localUser.isActive) {
-              setUser(localUser);
-              localStorage.setItem("wfp_last_active", now.toString());
-            } else {
-              logout(); // User not found or deactivated
-            }
           } else {
-            logout(); // User deleted or deactivated
+            logout();
           }
         }
       } else {
-        // Clear potential stale data
         localStorage.removeItem("wfp_current_user_id");
       }
     };
 
     checkSession();
 
-    // Interval check for timeout
-    const interval = setInterval(checkSession, 60000); // Check every minute
+    const interval = setInterval(checkSession, 60000);
 
-    // Activity listeners to refresh session
     const updateActivity = () => {
       if (localStorage.getItem("wfp_current_user_id")) {
         localStorage.setItem("wfp_last_active", Date.now().toString());
@@ -124,7 +70,6 @@ export const AuthProvider = ({ children }: { children?: ReactNode }) => {
   }, []);
 
   const login = async (username: string, pass: string): Promise<boolean> => {
-    // Verify password (Mock)
     let valid = false;
     if (username === "admin" && pass === "Admin@12345") valid = true;
     else if (username !== "admin" && pass === "123456") valid = true;
@@ -135,58 +80,40 @@ export const AuthProvider = ({ children }: { children?: ReactNode }) => {
     const found = users.find((u) => u.username === username);
 
     if (found && found.isActive) {
-      // حفظ في Firestore أولاً
-      await saveUserToFirestore(found);
-
-      // حفظ ID فقط في localStorage
       setUser(found);
       localStorage.setItem("wfp_current_user_id", found.id);
       localStorage.setItem("wfp_last_active", Date.now().toString());
 
-      // حفظ اللوج في Firestore أيضاً
-      try {
-        await setDoc(doc(db, "logs", Date.now().toString()), {
-          userId: found.id,
-          action: "LOGIN",
-          timestamp: serverTimestamp(),
-          details: `User ${found.username} logged in`,
-        });
-      } catch (error) {
-        console.error("Error saving log to Firestore:", error);
-      }
+      DB.logs.add({
+        id: Date.now().toString(),
+        userId: found.id,
+        action: "LOGIN",
+        timestamp: new Date().toISOString(),
+        details: `User ${found.username} logged in`,
+      });
 
       return true;
     }
     return false;
   };
 
-  const logout = async () => {
+  const logout = () => {
     if (user) {
-      try {
-        // حفظ اللوج في Firestore
-        await setDoc(doc(db, "logs", Date.now().toString()), {
-          userId: user.id,
-          action: "LOGOUT",
-          timestamp: serverTimestamp(),
-          details: `User ${user.username} logged out`,
-        });
-      } catch (error) {
-        console.error("Error saving logout log:", error);
-      }
+      DB.logs.add({
+        id: Date.now().toString(),
+        userId: user.id,
+        action: "LOGOUT",
+        timestamp: new Date().toISOString(),
+        details: `User ${user.username} logged out`,
+      });
     }
     setUser(null);
     localStorage.removeItem("wfp_current_user_id");
     localStorage.removeItem("wfp_last_active");
   };
 
-  const updateUser = async (updatedUser: User) => {
-    // تحديث Firestore أولاً
-    await saveUserToFirestore(updatedUser);
-
-    // ثم تحديث الحالة المحلية
+  const updateUser = (updatedUser: User) => {
     setUser(updatedUser);
-
-    // تحديث DB المحلية أيضاً للتوافق
     DB.users.update(updatedUser);
   };
 
