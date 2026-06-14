@@ -6,11 +6,11 @@ import React, {
   ReactNode,
 } from "react";
 import { User, Role } from "../types";
-import { DB } from "../services/db";
+import api from "../services/api";
 
 interface AuthContextType {
   user: User | null;
-  login: (username: string, pass: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
   updateUser: (user: User) => void;
   isAuthenticated: boolean;
@@ -20,32 +20,51 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const SESSION_TIMEOUT = 30 * 60 * 1000;
 
+function mapBackendUser(data: any): User {
+  return {
+    id: String(data.id),
+    fullName: data.fullname || "",
+    username: data.username || "",
+    role: data.role || Role.EMPLOYEE,
+    department: data.department?.name || data.department || "",
+    salary: data.salary,
+    isActive: data.deleted_at === null,
+    profileImage: data.image_url || "",
+    jobTitle: data.job_title || "",
+    isBot: false,
+  };
+}
+
 export const AuthProvider = ({ children }: { children?: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    const checkSession = () => {
-      const storedUserId = localStorage.getItem("wfp_current_user_id");
+    const checkSession = async () => {
+      const token = localStorage.getItem("wfp_token");
       const lastActive = localStorage.getItem("wfp_last_active");
 
-      if (storedUserId && lastActive) {
-        const now = Date.now();
-        const last = parseInt(lastActive, 10);
-
-        if (now - last > SESSION_TIMEOUT) {
-          logout();
-        } else {
-          const users = DB.users.getAll();
-          const localUser = users.find((u) => u.id === storedUserId);
-          if (localUser && localUser.isActive) {
-            setUser(localUser);
-            localStorage.setItem("wfp_last_active", now.toString());
-          } else {
-            logout();
-          }
-        }
-      } else {
+      if (!token || !lastActive) {
+        localStorage.removeItem("wfp_token");
         localStorage.removeItem("wfp_current_user_id");
+        return;
+      }
+
+      const now = Date.now();
+      const last = parseInt(lastActive, 10);
+
+      if (now - last > SESSION_TIMEOUT) {
+        logout();
+        return;
+      }
+
+      try {
+        const res = await api.get("/user");
+        const mapped = mapBackendUser(res.data);
+        setUser(mapped);
+        localStorage.setItem("wfp_current_user_id", mapped.id);
+        localStorage.setItem("wfp_last_active", now.toString());
+      } catch {
+        logout();
       }
     };
 
@@ -54,7 +73,7 @@ export const AuthProvider = ({ children }: { children?: ReactNode }) => {
     const interval = setInterval(checkSession, 60000);
 
     const updateActivity = () => {
-      if (localStorage.getItem("wfp_current_user_id")) {
+      if (localStorage.getItem("wfp_token")) {
         localStorage.setItem("wfp_last_active", Date.now().toString());
       }
     };
@@ -69,52 +88,37 @@ export const AuthProvider = ({ children }: { children?: ReactNode }) => {
     };
   }, []);
 
-  const login = async (username: string, pass: string): Promise<boolean> => {
-    let valid = false;
-    if (username === "admin" && pass === "Admin@12345") valid = true;
-    else if (username !== "admin" && pass === "123456") valid = true;
+  const login = async (email: string, password: string): Promise<boolean> => {
+    try {
+      const res = await api.post("/login", { email, password });
+      const { token, user: backendUser } = res.data;
 
-    if (!valid) return false;
-
-    const users = DB.users.getAll();
-    const found = users.find((u) => u.username === username);
-
-    if (found && found.isActive) {
-      setUser(found);
-      localStorage.setItem("wfp_current_user_id", found.id);
+      localStorage.setItem("wfp_token", token);
+      const mapped = mapBackendUser(backendUser);
+      setUser(mapped);
+      localStorage.setItem("wfp_current_user_id", mapped.id);
       localStorage.setItem("wfp_last_active", Date.now().toString());
 
-      DB.logs.add({
-        id: Date.now().toString(),
-        userId: found.id,
-        action: "LOGIN",
-        timestamp: new Date().toISOString(),
-        details: `User ${found.username} logged in`,
-      });
-
       return true;
+    } catch {
+      return false;
     }
-    return false;
   };
 
-  const logout = () => {
-    if (user) {
-      DB.logs.add({
-        id: Date.now().toString(),
-        userId: user.id,
-        action: "LOGOUT",
-        timestamp: new Date().toISOString(),
-        details: `User ${user.username} logged out`,
-      });
+  const logout = async () => {
+    try {
+      await api.post("/logout");
+    } catch {
+      // Ignore errors, still clear local state
     }
     setUser(null);
+    localStorage.removeItem("wfp_token");
     localStorage.removeItem("wfp_current_user_id");
     localStorage.removeItem("wfp_last_active");
   };
 
   const updateUser = (updatedUser: User) => {
     setUser(updatedUser);
-    DB.users.update(updatedUser);
   };
 
   return (

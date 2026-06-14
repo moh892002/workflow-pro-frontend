@@ -3,6 +3,7 @@ export const translations = {
   en: {
     app_name: 'WorkFlow Pro',
     login_title: 'Sign In to Your Account',
+    email: 'Email',
     username: 'Username',
     password: 'Password',
     login_btn: 'Login',
@@ -151,6 +152,7 @@ export const translations = {
   ar: {
     app_name: 'وورك فلو برو',
     login_title: 'تسجيل الدخول',
+    email: 'البريد الإلكتروني',
     username: 'اسم المستخدم',
     password: 'كلمة المرور',
     login_btn: 'دخول',
