@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { AttendanceRecord } from '../types';
 import { Clock, MapPin } from 'lucide-react';
+import { Skeleton, TableSkeleton } from '../components/Skeleton';
 
 function toFrontendRecord(data: any): AttendanceRecord {
   return {
@@ -80,8 +81,13 @@ export const Attendance = () => {
       <h2 className="text-2xl font-bold text-slate-800 mb-6">{t('attendance')}</h2>
 
       {loading ? (
-        <div className="flex justify-center py-20">
-          <span className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+        <div className="space-y-6">
+          <div className="bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700 text-center">
+            <Skeleton width="200px" height="24px" className="mx-auto mb-8" />
+            <Skeleton variant="rect" width="120px" height="120px" className="mx-auto rounded-full mb-4" />
+            <Skeleton width="160px" height="40px" className="mx-auto" />
+          </div>
+          <TableSkeleton rows={4} />
         </div>
       ) : (
         <>

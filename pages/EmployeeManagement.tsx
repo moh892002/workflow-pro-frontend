@@ -6,6 +6,7 @@ import { DB } from '../services/db';
 import { User, Role, DEPARTMENTS, CredentialRequest, RequestType, RequestStatus } from '../types';
 import { Plus, Trash2, Edit2, ShieldAlert, Key, Check, X, Camera, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { TableSkeleton } from '../components/Skeleton';
 
 function toBackendUser(data: Partial<User>, password?: string, departmentId?: number | null) {
   const body: Record<string, any> = {
@@ -314,9 +315,7 @@ export const EmployeeManagement = () => {
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-20">
-          <span className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
-        </div>
+        <TableSkeleton rows={6} />
       ) : activeTab === 'employees' && (
         <>
           <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex gap-4 overflow-x-auto">

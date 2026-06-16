@@ -5,6 +5,7 @@ import api from '../services/api';
 import { RecycleBinItem, Role } from '../types';
 import { Trash2, RotateCcw, AlertOctagon, User, FileText, CheckSquare, DollarSign, Building, Clock, Star } from 'lucide-react';
 import { DeletionModal } from '../components/DeletionModal';
+import { TableSkeleton } from '../components/Skeleton';
 
 const MODEL_TYPE_MAP: Record<string, string> = {
   'App\\Models\\User': 'USER',
@@ -137,9 +138,7 @@ export const RecycleBin = () => {
        )}
 
        {loading ? (
-         <div className="flex justify-center py-20">
-           <span className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
-         </div>
+         <TableSkeleton rows={5} />
        ) : (
          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
             {items.length === 0 ? (

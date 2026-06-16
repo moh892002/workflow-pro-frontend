@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { User, Role, FinancialRecord, TransactionType, DEPARTMENTS } from '../types';
 import { DollarSign, Plus, Trash2, FileText, Download, Filter, Search } from 'lucide-react';
+import { TableSkeleton } from '../components/Skeleton';
 
 const TX_TYPE_MAP: Record<string, TransactionType> = {
   salary: TransactionType.SALARY,
@@ -195,9 +196,7 @@ export const Finance = () => {
        </div>
 
        {loading ? (
-         <div className="flex justify-center py-20">
-           <span className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
-         </div>
+         <TableSkeleton rows={6} />
        ) : (
          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
             <table className="w-full text-left rtl:text-right text-sm">

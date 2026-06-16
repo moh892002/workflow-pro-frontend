@@ -5,6 +5,7 @@ import api from '../services/api';
 import { User, Role, AttendanceRecord } from '../types';
 import { FileText, Printer, Clock, UserX, UserCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { Skeleton } from '../components/Skeleton';
 
 interface ReportStats {
   totalDays: number;
@@ -189,8 +190,15 @@ export const Reports = () => {
       </div>
 
       {loading && !stats && (
-        <div className="flex justify-center py-20">
-          <span className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+        <div className="space-y-6">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-100 dark:border-slate-700">
+            <Skeleton width="200px" height="24px" className="mb-4" />
+            <div className="grid grid-cols-2 gap-4">
+              <Skeleton variant="rect" width="100%" height="48px" />
+              <Skeleton variant="rect" width="100%" height="48px" />
+            </div>
+            <Skeleton variant="rect" width="100%" height="120px" className="mt-4" />
+          </div>
         </div>
       )}
 

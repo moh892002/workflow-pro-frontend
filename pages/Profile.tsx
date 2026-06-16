@@ -4,7 +4,7 @@ import { useLanguage } from '../context/LanguageContext';
 import api from '../services/api';
 import { DB } from '../services/db';
 import { User, RequestType, RequestStatus } from '../types';
-import { Camera, Save, X, User as UserIcon, Briefcase, Building, Lock } from 'lucide-react';
+import { Camera, Save, X, User as UserIcon, Briefcase, Building, Lock, Edit3 } from 'lucide-react';
 
 export const Profile = () => {
   const { user, updateUser } = useAuth();
@@ -13,10 +13,41 @@ export const Profile = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
+  const [isEditingInfo, setIsEditingInfo] = useState(false);
+  const [editData, setEditData] = useState({ fullName: '', jobTitle: '' });
+  const [saving, setSaving] = useState(false);
+
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
   const [requestData, setRequestData] = useState({ type: RequestType.PASSWORD, reason: '' });
 
   if (!user) return null;
+
+  const startEditing = () => {
+    setEditData({ fullName: user.fullName, jobTitle: user.jobTitle });
+    setIsEditingInfo(true);
+  };
+
+  const cancelEditing = () => {
+    setIsEditingInfo(false);
+  };
+
+  const handleSaveInfo = async () => {
+    if (!user) return;
+    setSaving(true);
+    try {
+      const res = await api.put(`/users/${user.id}`, {
+        fullname: editData.fullName,
+        job_title: editData.jobTitle,
+      });
+      const updatedUser = { ...user, fullName: editData.fullName, jobTitle: editData.jobTitle };
+      updateUser(updatedUser);
+      setIsEditingInfo(false);
+    } catch {
+      alert('Failed to update profile');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -137,7 +168,16 @@ export const Profile = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">{t('full_name')}</label>
-                            <p className="text-slate-800 dark:text-slate-200 font-medium">{user.fullName}</p>
+                            {isEditingInfo ? (
+                                <input
+                                    type="text"
+                                    value={editData.fullName}
+                                    onChange={e => setEditData({ ...editData, fullName: e.target.value })}
+                                    className="w-full border dark:border-slate-600 rounded-lg p-2 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white font-medium"
+                                />
+                            ) : (
+                                <p className="text-slate-800 dark:text-slate-200 font-medium">{user.fullName}</p>
+                            )}
                         </div>
                         <div>
                             <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">{t('username')}</label>
@@ -171,14 +211,43 @@ export const Profile = () => {
                     </div>
                 </div>
 
-                <div className="flex justify-end">
-                    <button
-                        onClick={() => setIsRequestModalOpen(true)}
-                        className="flex items-center gap-2 px-6 py-3 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl transition font-medium border border-slate-200 dark:border-slate-600"
-                    >
-                        <Lock size={18} />
-                        {t('request_change')}
-                    </button>
+                <div className="flex justify-end gap-3">
+                    {isEditingInfo ? (
+                        <>
+                            <button
+                                onClick={cancelEditing}
+                                className="flex items-center gap-2 px-6 py-3 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl transition font-medium border border-slate-200 dark:border-slate-600"
+                            >
+                                <X size={18} />
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleSaveInfo}
+                                disabled={saving}
+                                className="flex items-center gap-2 px-6 py-3 bg-accent hover:bg-accent-hover text-white rounded-xl transition font-medium disabled:opacity-50"
+                            >
+                                <Save size={18} />
+                                {saving ? 'Saving...' : 'Save'}
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <button
+                                onClick={startEditing}
+                                className="flex items-center gap-2 px-6 py-3 bg-accent hover:bg-accent-hover text-white rounded-xl transition font-medium"
+                            >
+                                <Edit3 size={18} />
+                                Edit Profile
+                            </button>
+                            <button
+                                onClick={() => setIsRequestModalOpen(true)}
+                                className="flex items-center gap-2 px-6 py-3 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl transition font-medium border border-slate-200 dark:border-slate-600"
+                            >
+                                <Lock size={18} />
+                                {t('request_change')}
+                            </button>
+                        </>
+                    )}
                 </div>
 
             </div>

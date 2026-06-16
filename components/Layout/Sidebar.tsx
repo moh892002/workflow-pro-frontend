@@ -115,7 +115,7 @@ export const Sidebar = () => {
         </div>
         <button
           onClick={logout}
-          className="flex items-center gap-3 px-4 py-2 w-full text-left text-red-400 hover:bg-slate-800 dark:hover:bg-slate-800 rounded-lg transition"
+          className="flex items-center gap-3 px-4 py-2 w-full text-left text-slate-400 hover:text-white hover:bg-slate-800 dark:hover:bg-slate-800 rounded-lg transition"
         >
           <LogOut size={20} />
           <span>{t('logout')}</span>

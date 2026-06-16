@@ -6,6 +6,7 @@ import { AIService } from '../services/ai';
 import { Task, ActivityLog, TaskStatus, Role, PerformanceReport, AttendanceRecord } from '../types';
 import { Users, CheckCircle, AlertCircle, Briefcase, Calendar, BrainCircuit, Sparkles, UserCheck, UserX, Clock } from 'lucide-react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
+import { StatsGridSkeleton, Skeleton } from '../components/Skeleton';
 
 function toFrontendTask(data: any): Task {
   const priorityMap: Record<string, any> = { LOW: 'LOW', MEDIUM: 'MEDIUM', HIGH: 'HIGH', URGENT: 'CRITICAL' };
@@ -210,8 +211,22 @@ export const Dashboard = () => {
 
   if (loading) {
     return (
-      <div className="flex justify-center py-20">
-        <span className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+      <div className="space-y-8 animate-fade-in">
+        <div className="flex items-center justify-between">
+          <Skeleton width="200px" height="32px" />
+          <Skeleton width="120px" height="24px" />
+        </div>
+        <StatsGridSkeleton />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-100 dark:border-slate-700">
+            <Skeleton width="160px" height="24px" className="mb-6" />
+            <Skeleton variant="rect" width="100%" height="200px" />
+          </div>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-100 dark:border-slate-700">
+            <Skeleton width="120px" height="24px" className="mb-6" />
+            <Skeleton variant="rect" width="100%" height="200px" />
+          </div>
+        </div>
       </div>
     );
   }

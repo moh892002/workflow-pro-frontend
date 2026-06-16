@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { Task, TaskPriority, TaskStatus, User, Role } from '../types';
 import { Plus, Search, Calendar, User as UserIcon, Trash2 } from 'lucide-react';
+import { TableSkeleton } from '../components/Skeleton';
 
 const PRIORITY_MAP: Record<string, TaskPriority> = {
   LOW: TaskPriority.LOW,
@@ -227,9 +228,7 @@ export const Tasks = () => {
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-20">
-          <span className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
-        </div>
+        <TableSkeleton rows={6} />
       ) : (
         <div className="grid gap-4">
           {filteredTasks.map(task => {
