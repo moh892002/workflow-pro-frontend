@@ -1,2 +1,33 @@
 /* CSS File */
-/*@import 'tailwindcss/base';*/
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #0f172a;
+  --color-primary-light: #1e293b;
+  --color-accent: #10b981;
+  --color-accent-hover: #059669;
+  --color-secondary: #f1f5f9;
+  --font-family-sans: "Inter", "Cairo", sans-serif;
+  --dark-mode: class;
+  --animate-fade-in: fadeIn 0.5s ease-in-out;
+}
+
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Smooth scrolling and font application */
+body {
+  font-family: "Inter", sans-serif;
+}
+
+.rtl {
+  direction: rtl;
+}
