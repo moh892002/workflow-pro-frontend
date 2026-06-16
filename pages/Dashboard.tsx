@@ -1,20 +1,63 @@
-
 import React, { useEffect, useState } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
-import { DB } from '../services/db';
+import api from '../services/api';
 import { AIService } from '../services/ai';
 import { Task, ActivityLog, TaskStatus, Role, PerformanceReport, AttendanceRecord } from '../types';
 import { Users, CheckCircle, AlertCircle, Briefcase, Calendar, BrainCircuit, Sparkles, UserCheck, UserX, Clock } from 'lucide-react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
 
+function toFrontendTask(data: any): Task {
+  const priorityMap: Record<string, any> = { LOW: 'LOW', MEDIUM: 'MEDIUM', HIGH: 'HIGH', URGENT: 'CRITICAL' };
+  const statusMap: Record<string, any> = { pending: 'PENDING', in_progress: 'IN_PROGRESS', completed: 'COMPLETED' };
+  const status = statusMap[data.status] || 'PENDING';
+  const deadline = data.deadline_date || '';
+  let computedStatus = status;
+  if (status !== 'COMPLETED' && deadline && new Date(deadline) < new Date(new Date().toDateString())) {
+    computedStatus = 'OVERDUE';
+  }
+  return {
+    id: String(data.id),
+    title: data.title || '',
+    description: data.description || '',
+    assignedToId: data.assigned_to ? String(data.assigned_to) : '',
+    assignedById: '',
+    priority: priorityMap[data.priority] || 'MEDIUM',
+    status: computedStatus,
+    deadline,
+    progress: computedStatus === 'COMPLETED' ? 100 : computedStatus === 'IN_PROGRESS' ? 50 : 0,
+    createdAt: data.created_at || '',
+  };
+}
+
+function toFrontendLog(data: any): ActivityLog {
+  return {
+    id: String(data.id),
+    userId: data.user_id || '',
+    action: data.action || '',
+    timestamp: data.created_at || data.timestamp || '',
+    details: data.details || '',
+  };
+}
+
+function toFrontendAttendance(data: any): AttendanceRecord {
+  return {
+    id: data.id || String(Date.now()),
+    userId: data.user_id || '',
+    date: data.date || '',
+    checkIn: data.check_in || null,
+    checkOut: data.check_out || null,
+    status: data.status || 'PRESENT',
+  };
+}
+
 export const Dashboard = () => {
   const { t } = useLanguage();
   const { user } = useAuth();
-  const [stats, setStats] = useState({ 
-    employees: 0, 
-    active: 0, 
-    completed: 0, 
+  const [stats, setStats] = useState({
+    employees: 0,
+    active: 0,
+    completed: 0,
     overdue: 0,
     present: 0,
     absent: 0,
@@ -22,70 +65,98 @@ export const Dashboard = () => {
   });
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [employeeTasks, setEmployeeTasks] = useState<Task[]>([]);
-  
+  const [loading, setLoading] = useState(true);
+
   // AI State
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiReport, setAiReport] = useState<PerformanceReport | null>(null);
 
   useEffect(() => {
-    const tasks = DB.tasks.getAll();
-    const employees = DB.users.getAll().filter(u => u.isActive && !u.isBot); // Only real active employees
-    const activityLogs = DB.logs.getAll();
-    const attendance = DB.attendance.getAll();
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const todayStr = new Date().toISOString().split('T')[0];
 
-    // Attendance Calculations for Today
-    const todayStr = new Date().toISOString().split('T')[0];
-    const todayRecords = attendance.filter(r => r.date === todayStr);
-    
-    // Present: Anyone with a record today
-    const presentCount = todayRecords.length;
-    
-    // Late: Check-in after 9:00 AM (Simple rule)
-    const lateCount = todayRecords.filter(r => {
-        if (!r.checkIn) return false;
-        const checkInDate = new Date(r.checkIn);
-        return checkInDate.getHours() > 9 || (checkInDate.getHours() === 9 && checkInDate.getMinutes() > 0);
-    }).length;
+        const [tasksRes, usersRes, logsRes, attendanceRes] = await Promise.all([
+          api.get('/tasks'),
+          api.get('/users'),
+          api.get('/activity-logs'),
+          api.get(`/attendance?date=${todayStr}`),
+        ]);
 
-    // Absent: Total Employees - Present
-    const absentCount = Math.max(0, employees.length - presentCount);
+        const allTasks = (tasksRes.data.data || []).map(toFrontendTask);
+        const allUsers = (usersRes.data.data || []).filter((u: any) => !u.isBot).map((u: any) => ({
+          id: String(u.id),
+          isActive: u.deleted_at === null,
+          role: u.role,
+        }));
+        const activeEmployees = allUsers.filter((u: any) => u.isActive);
+        const allLogs = (logsRes.data.data || []).map(toFrontendLog);
 
-    if (user?.role === Role.ADMIN) {
-        // Admin Stats
-        setStats({
-            employees: employees.length,
-            active: tasks.filter(t => t.status === TaskStatus.IN_PROGRESS || t.status === TaskStatus.PENDING).length,
-            completed: tasks.filter(t => t.status === TaskStatus.COMPLETED).length,
-            overdue: tasks.filter(t => t.status === TaskStatus.OVERDUE).length,
+        const todayRecords = (attendanceRes.data.data || []).map(toFrontendAttendance);
+
+        const presentCount = todayRecords.length;
+        const lateCount = todayRecords.filter(r => {
+          if (!r.checkIn) return false;
+          const d = new Date(r.checkIn);
+          return d.getHours() > 9 || (d.getHours() === 9 && d.getMinutes() > 0);
+        }).length;
+        const absentCount = Math.max(0, activeEmployees.length - presentCount);
+
+        if (user?.role === Role.ADMIN) {
+          setStats({
+            employees: activeEmployees.length,
+            active: allTasks.filter(t => t.status === TaskStatus.IN_PROGRESS || t.status === TaskStatus.PENDING).length,
+            completed: allTasks.filter(t => t.status === TaskStatus.COMPLETED).length,
+            overdue: allTasks.filter(t => t.status === TaskStatus.OVERDUE).length,
             present: presentCount,
             absent: absentCount,
-            late: lateCount
-        });
-        setLogs(activityLogs.slice(0, 5));
-    } else {
-        // Employee Stats
-        const myTasks = tasks.filter(t => t.assignedToId === user?.id);
-        setEmployeeTasks(myTasks);
-        setStats({
-            employees: 0, // Not relevant
+            late: lateCount,
+          });
+          setLogs(allLogs.slice(0, 5));
+        } else {
+          const myTasks = allTasks.filter(t => t.assignedToId === user?.id);
+          setEmployeeTasks(myTasks);
+          setStats({
+            employees: 0,
             active: myTasks.filter(t => t.status === TaskStatus.IN_PROGRESS || t.status === TaskStatus.PENDING).length,
             completed: myTasks.filter(t => t.status === TaskStatus.COMPLETED).length,
             overdue: myTasks.filter(t => t.status === TaskStatus.OVERDUE).length,
-            present: presentCount, // User can see general stats or just ignored
+            present: presentCount,
             absent: absentCount,
-            late: lateCount
-        });
-        setLogs(activityLogs.filter(l => l.userId === user?.id).slice(0, 5));
-    }
+            late: lateCount,
+          });
+          setLogs(allLogs.filter(l => l.userId === user?.id).slice(0, 5));
+        }
+      } catch {
+        setStats({ employees: 0, active: 0, completed: 0, overdue: 0, present: 0, absent: 0, late: 0 });
+        setLogs([]);
+        setEmployeeTasks([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
   }, [user]);
 
   const handleAiAnalysis = async () => {
     if (!user) return;
     setIsAnalyzing(true);
-    // Gather tasks to send to AI
-    const tasksToAnalyze = user.role === Role.ADMIN ? DB.tasks.getAll() : employeeTasks;
-    const report = await AIService.analyzePerformance(tasksToAnalyze, user.fullName);
-    setAiReport(report);
+    try {
+      const res = await api.get('/tasks');
+      const allTasks = (res.data.data || []).map(toFrontendTask);
+      const tasksToAnalyze = user.role === Role.ADMIN ? allTasks : allTasks.filter(t => t.assignedToId === user?.id);
+      const report = await AIService.analyzePerformance(tasksToAnalyze, user.fullName);
+      setAiReport(report);
+    } catch {
+      setAiReport({
+        score: 0,
+        summary: 'Error loading tasks for analysis.',
+        suggestions: ['Try again later'],
+        level: 'Critical',
+      });
+    }
     setIsAnalyzing(false);
   };
 
@@ -112,25 +183,32 @@ export const Dashboard = () => {
 
   const getStatusColor = (s: TaskStatus) => {
     switch(s) {
-        case TaskStatus.COMPLETED: 
+        case TaskStatus.COMPLETED:
             return 'text-green-600 dark:text-green-400';
-        case TaskStatus.IN_PROGRESS: 
+        case TaskStatus.IN_PROGRESS:
             return 'text-blue-600 dark:text-blue-400';
-        case TaskStatus.PENDING: 
+        case TaskStatus.PENDING:
             return 'text-yellow-600 dark:text-yellow-400';
-        case TaskStatus.OVERDUE: 
+        case TaskStatus.OVERDUE:
             return 'text-red-600 dark:text-red-400';
         default: return 'text-slate-600';
     }
   };
 
-  // Helper for Performance Color
   const getPerformanceColor = (level: string) => {
       if (level === 'Excellent') return 'text-green-500';
       if (level === 'Good') return 'text-blue-500';
       if (level === 'Needs Improvement') return 'text-orange-500';
       return 'text-red-500';
   };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-20">
+        <span className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -143,7 +221,6 @@ export const Dashboard = () => {
           </span>
       </div>
 
-      {/* Main Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {isAdmin && <StatCard title={t('stats_employees')} value={stats.employees} icon={Users} color={{ bg: 'bg-blue-500', text: 'text-blue-600 dark:text-blue-400' }} />}
         <StatCard title={isAdmin ? t('stats_active_tasks') : "My Active Tasks"} value={stats.active} icon={Briefcase} color={{ bg: 'bg-yellow-500', text: 'text-yellow-600 dark:text-yellow-400' }} />
@@ -151,7 +228,6 @@ export const Dashboard = () => {
         <StatCard title={isAdmin ? t('stats_late') : "My Overdue"} value={stats.overdue} icon={AlertCircle} color={{ bg: 'bg-red-500', text: 'text-red-600 dark:text-red-400' }} />
       </div>
 
-      {/* Attendance Stats Grid (Admin Only) */}
       {isAdmin && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <StatCard title={t('stats_present')} value={stats.present} icon={UserCheck} color={{ bg: 'bg-emerald-500', text: 'text-emerald-600 dark:text-emerald-400' }} />
@@ -161,7 +237,6 @@ export const Dashboard = () => {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Chart Section */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
           <h3 className="text-lg font-bold mb-6 text-slate-800 dark:text-white">{t('task_completion')}</h3>
           <div className="h-64 relative">
@@ -190,7 +265,6 @@ export const Dashboard = () => {
           </div>
         </div>
 
-        {/* AI Performance Analysis Card */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 lg:col-span-2">
             <div className="flex justify-between items-start mb-4">
                 <div className="flex items-center gap-2">
@@ -202,8 +276,8 @@ export const Dashboard = () => {
                         <p className="text-xs text-slate-500 dark:text-slate-400">Powered by GPT AI</p>
                     </div>
                 </div>
-                <button 
-                    onClick={handleAiAnalysis} 
+                <button
+                    onClick={handleAiAnalysis}
                     disabled={isAnalyzing}
                     className="text-sm bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition disabled:opacity-50 flex items-center gap-2"
                 >
@@ -219,7 +293,7 @@ export const Dashboard = () => {
                     )}
                 </button>
             </div>
-            
+
             {aiReport ? (
                 <div className="bg-slate-50 dark:bg-slate-700/30 rounded-xl p-6 border border-slate-100 dark:border-slate-700 animate-fade-in">
                     <div className="flex items-center gap-6 mb-4">
@@ -255,8 +329,7 @@ export const Dashboard = () => {
             )}
         </div>
       </div>
-      
-      {/* Activity / Tasks List */}
+
         <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
           <h3 className="text-lg font-bold mb-4 text-slate-800 dark:text-white">
               {isAdmin ? t('recent_activity') : "My Pending Tasks"}
@@ -290,7 +363,7 @@ export const Dashboard = () => {
                     </div>
                 ))
             )}
-            
+
             {(isAdmin && logs.length === 0) && <p className="text-slate-400 text-sm">No activity recorded yet.</p>}
             {(!isAdmin && employeeTasks.length === 0) && <p className="text-slate-400 text-sm">No pending tasks. Great job!</p>}
           </div>

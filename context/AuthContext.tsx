@@ -3,6 +3,7 @@ import React, {
   useContext,
   useState,
   useEffect,
+  useRef,
   ReactNode,
 } from "react";
 import { User, Role } from "../types";
@@ -37,8 +38,11 @@ function mapBackendUser(data: any): User {
 
 export const AuthProvider = ({ children }: { children?: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
+  const lastUserRef = useRef<string>("");
 
   useEffect(() => {
+    let mounted = true;
+
     const checkSession = async () => {
       const token = localStorage.getItem("wfp_token");
       const lastActive = localStorage.getItem("wfp_last_active");
@@ -59,12 +63,20 @@ export const AuthProvider = ({ children }: { children?: ReactNode }) => {
 
       try {
         const res = await api.get("/user");
+        if (!mounted) return;
         const mapped = mapBackendUser(res.data);
-        setUser(mapped);
+        const snapshot = JSON.stringify(mapped);
+        if (snapshot !== lastUserRef.current) {
+          lastUserRef.current = snapshot;
+          setUser(mapped);
+        }
         localStorage.setItem("wfp_current_user_id", mapped.id);
         localStorage.setItem("wfp_last_active", now.toString());
-      } catch {
-        logout();
+      } catch (err: any) {
+        if (!mounted) return;
+        if (err?.response?.status === 401) {
+          logout();
+        }
       }
     };
 
@@ -82,6 +94,7 @@ export const AuthProvider = ({ children }: { children?: ReactNode }) => {
     window.addEventListener("keypress", updateActivity);
 
     return () => {
+      mounted = false;
       clearInterval(interval);
       window.removeEventListener("mousemove", updateActivity);
       window.removeEventListener("keypress", updateActivity);

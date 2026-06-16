@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
-import { DB } from '../services/db';
+import api from '../services/api';
 import { User, Role, AttendanceRecord } from '../types';
 import { FileText, Printer, Clock, UserX, UserCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -15,30 +15,54 @@ interface ReportStats {
   averageHours: number;
 }
 
+function toFrontendUser(data: any): User {
+  return {
+    id: String(data.id),
+    fullName: data.fullname || '',
+    username: data.username || '',
+    role: data.role || Role.EMPLOYEE,
+    department: data.department?.name || '',
+    salary: data.salary,
+    isActive: data.deleted_at === null,
+    profileImage: data.image_url || `https://ui-avatars.com/api/?name=${data.fullname}&background=random`,
+    jobTitle: data.job_title || '',
+    isBot: false,
+  };
+}
+
 export const Reports = () => {
   const { t } = useLanguage();
   const { user } = useAuth();
   const navigate = useNavigate();
-  
+
   const [employees, setEmployees] = useState<User[]>([]);
   const [selectedUser, setSelectedUser] = useState<string>('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [reportData, setReportData] = useState<AttendanceRecord[]>([]);
   const [stats, setStats] = useState<ReportStats | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // SECURITY: Extra check if routed here by mistake
     if (!user || (user.role !== Role.ADMIN && user.role !== Role.HR_MANAGER)) {
         navigate('/');
         return;
     }
 
-    // Populate Employee Dropdown
-    const allUsers = DB.users.getAll().filter(u => !u.isBot);
-    setEmployees(allUsers);
-    
-    // Set default range (Current Month)
+    const fetchUsers = async () => {
+      try {
+        setLoading(true);
+        const res = await api.get('/users');
+        const mapped = (res.data.data || []).map(toFrontendUser);
+        setEmployees(mapped);
+      } catch {
+        setEmployees([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchUsers();
+
     const date = new Date();
     const firstDay = new Date(date.getFullYear(), date.getMonth(), 1).toISOString().split('T')[0];
     const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).toISOString().split('T')[0];
@@ -46,90 +70,72 @@ export const Reports = () => {
     setEndDate(lastDay);
   }, [user, navigate]);
 
-  const generateReport = () => {
+  const generateReport = async () => {
     if (!selectedUser || !startDate || !endDate) return;
 
-    // STRICT ACCESS CONTROL: HR cannot generate report for self
     if (user?.role === Role.HR_MANAGER && selectedUser === user.id) {
         alert("Access Denied: You are not allowed to generate your own report.");
         return;
     }
 
-    const allRecords = DB.attendance.getAll();
-    const userRecords = allRecords.filter(r => {
-      return r.userId === selectedUser && r.date >= startDate && r.date <= endDate;
-    });
-
-    // Calculate Stats
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const totalDaysInRange = Math.ceil((end.getTime() - start.getTime()) / (1000 * 3600 * 24)) + 1;
-
-    let totalHours = 0;
-    let lateDays = 0;
-
-    userRecords.forEach(r => {
-      if (r.checkIn && r.checkOut) {
-        const inTime = new Date(r.checkIn).getTime();
-        const outTime = new Date(r.checkOut).getTime();
-        const hours = (outTime - inTime) / (1000 * 3600);
-        totalHours += hours;
-      }
-      
-      // Late calculation (e.g., after 9 AM)
-      if (r.checkIn) {
-        const checkInTime = new Date(r.checkIn);
-        if (checkInTime.getHours() > 9 || (checkInTime.getHours() === 9 && checkInTime.getMinutes() > 0)) {
-           lateDays++;
-        }
-      }
-    });
-
-    const presentDays = userRecords.length;
-    const absentDays = Math.max(0, totalDaysInRange - presentDays);
-
-    setStats({
-      totalDays: totalDaysInRange,
-      presentDays,
-      absentDays,
-      lateDays,
-      totalHours: parseFloat(totalHours.toFixed(2)),
-      averageHours: presentDays > 0 ? parseFloat((totalHours / presentDays).toFixed(2)) : 0
-    });
-
-    setReportData(userRecords);
-
-    // LOGGING: Log this action for HR Managers
-    if (user?.role === Role.HR_MANAGER) {
-      const targetUser = employees.find(e => e.id === selectedUser)?.fullName || selectedUser;
-      DB.logs.add({
-        id: Date.now().toString(),
-        userId: user.id,
-        action: 'GENERATE_REPORT',
-        timestamp: new Date().toISOString(),
-        details: `Generated report for employee: ${targetUser}`
+    try {
+      setLoading(true);
+      const res = await api.get('/reports/attendance', {
+        params: { user_id: selectedUser, start_date: startDate, end_date: endDate },
       });
+      const data = res.data.data;
+
+      setStats({
+        totalDays: data.stats.total_days,
+        presentDays: data.stats.present_days,
+        absentDays: data.stats.absent_days,
+        lateDays: data.stats.late_days,
+        totalHours: data.stats.total_hours,
+        averageHours: data.stats.average_hours,
+      });
+
+      setReportData((data.daily_breakdown || []).map((r: any) => ({
+        id: `${r.date}-${selectedUser}`,
+        userId: String(data.employee.id),
+        date: r.date,
+        checkIn: r.check_in || null,
+        checkOut: r.check_out || null,
+        status: r.status || 'PRESENT',
+      })));
+
+      if (user?.role === Role.HR_MANAGER) {
+        const targetUser = employees.find(e => e.id === selectedUser)?.fullName || selectedUser;
+        await api.post('/activity-logs', {
+          user_id: user.id,
+          action: 'GENERATE_REPORT',
+          details: `Generated report for employee: ${targetUser}`,
+        });
+      }
+    } catch {
+      alert('Failed to generate report');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     window.print();
-    
-    // Log print action as well
+
     if (user?.role === Role.HR_MANAGER) {
-        DB.logs.add({
-          id: Date.now().toString(),
-          userId: user.id,
+      try {
+        await api.post('/activity-logs', {
+          user_id: user.id,
           action: 'PRINT_REPORT',
-          timestamp: new Date().toISOString(),
-          details: `Printed report for employee ID: ${selectedUser}`
+          details: `Printed report for employee ID: ${selectedUser}`,
         });
+      } catch {}
     }
   };
+
+  const emp = employees.find(e => e.id === selectedUser);
 
   return (
     <div className="animate-fade-in">
-      {/* Header / Controls - Hidden when printing */}
       <div className="print:hidden mb-8">
         <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2">
             <FileText className="text-accent" /> {t('reports')}
@@ -138,21 +144,21 @@ export const Reports = () => {
         <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
             <div>
                 <label className="block text-sm font-medium mb-1 text-slate-700 dark:text-slate-300">{t('select_employee')}</label>
-                <select 
+                <select
                     className="w-full border dark:border-slate-600 rounded-lg p-2.5 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-accent outline-none"
                     value={selectedUser}
                     onChange={(e) => setSelectedUser(e.target.value)}
                 >
                     <option value="">-- Select --</option>
-                    {employees.map(emp => (
-                        <option key={emp.id} value={emp.id}>{emp.fullName}</option>
+                    {employees.map(e => (
+                        <option key={e.id} value={e.id}>{e.fullName}</option>
                     ))}
                 </select>
             </div>
             <div>
                 <label className="block text-sm font-medium mb-1 text-slate-700 dark:text-slate-300">{t('date_from')}</label>
-                <input 
-                    type="date" 
+                <input
+                    type="date"
                     className="w-full border dark:border-slate-600 rounded-lg p-2.5 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
@@ -160,26 +166,31 @@ export const Reports = () => {
             </div>
             <div>
                 <label className="block text-sm font-medium mb-1 text-slate-700 dark:text-slate-300">{t('date_to')}</label>
-                <input 
-                    type="date" 
+                <input
+                    type="date"
                     className="w-full border dark:border-slate-600 rounded-lg p-2.5 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white"
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
                 />
             </div>
-            <button 
+            <button
                 onClick={generateReport}
-                className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-medium transition shadow-lg shadow-blue-900/20"
+                disabled={loading}
+                className="bg-primary hover:bg-primary-light text-white px-6 py-2.5 rounded-lg font-medium transition shadow-lg shadow-blue-900/20 disabled:opacity-50"
             >
-                {t('generate_report')}
+                {loading ? 'Loading...' : t('generate_report')}
             </button>
         </div>
       </div>
 
-      {/* Report Content */}
+      {loading && !stats && (
+        <div className="flex justify-center py-20">
+          <span className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+        </div>
+      )}
+
       {stats && (
         <div className="bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700 print:shadow-none print:border-0 print:p-0">
-            {/* Report Header for Print */}
             <div className="border-b border-slate-200 dark:border-slate-600 pb-6 mb-6 flex justify-between items-start">
                 <div>
                     <h1 className="text-3xl font-bold text-slate-800 dark:text-white mb-2">WorkFlow Pro</h1>
@@ -188,7 +199,7 @@ export const Reports = () => {
                 </div>
                 <div className="text-right">
                     <div className="text-sm text-slate-500 dark:text-slate-400 mb-1">Generated on: {new Date().toLocaleDateString()}</div>
-                    <button 
+                    <button
                         onClick={handlePrint}
                         className="print:hidden flex items-center gap-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 text-slate-700 dark:text-slate-200 px-4 py-2 rounded-lg text-sm font-medium transition"
                     >
@@ -197,13 +208,12 @@ export const Reports = () => {
                 </div>
             </div>
 
-            {/* Employee Info Section */}
             <div className="mb-8 p-4 bg-slate-50 dark:bg-slate-700/30 rounded-xl border border-slate-100 dark:border-slate-700">
                 <div className="grid grid-cols-2 gap-4">
                     <div>
                         <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t('full_name')}</span>
                         <p className="text-lg font-bold text-slate-800 dark:text-white">
-                            {employees.find(e => e.id === selectedUser)?.fullName}
+                            {emp?.fullName || selectedUser}
                         </p>
                     </div>
                     <div className="text-right rtl:text-left">
@@ -215,7 +225,6 @@ export const Reports = () => {
                 </div>
             </div>
 
-            {/* Stats Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
                 <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800">
                     <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 mb-2">
@@ -224,7 +233,7 @@ export const Reports = () => {
                     </div>
                     <p className="text-2xl font-bold text-slate-800 dark:text-white">{stats.totalHours} <span className="text-xs font-normal text-slate-500">hrs</span></p>
                 </div>
-                
+
                 <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-100 dark:border-green-800">
                     <div className="flex items-center gap-2 text-green-600 dark:text-green-400 mb-2">
                         <UserCheck size={18} />
@@ -250,7 +259,6 @@ export const Reports = () => {
                 </div>
             </div>
 
-            {/* Detailed Table */}
             <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-4">{t('daily_breakdown')}</h3>
             <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
                 <table className="w-full text-left rtl:text-right text-sm">

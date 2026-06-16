@@ -1,7 +1,7 @@
-
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import api from '../services/api';
 import { DB } from '../services/db';
 import { User, RequestType, RequestStatus } from '../types';
 import { Camera, Save, X, User as UserIcon, Briefcase, Building, Lock } from 'lucide-react';
@@ -9,11 +9,10 @@ import { Camera, Save, X, User as UserIcon, Briefcase, Building, Lock } from 'lu
 export const Profile = () => {
   const { user, updateUser } = useAuth();
   const { t } = useLanguage();
-  
+
   const [isEditing, setIsEditing] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
-  
-  // Credential Request State
+
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
   const [requestData, setRequestData] = useState({ type: RequestType.PASSWORD, reason: '' });
 
@@ -22,8 +21,7 @@ export const Profile = () => {
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
         const file = e.target.files[0];
-        
-        // Strict Validation
+
         if (!['image/jpeg', 'image/png'].includes(file.type)) {
             alert(t('upload_restriction'));
             return;
@@ -44,23 +42,23 @@ export const Profile = () => {
     }
   };
 
-  const handleSaveImage = () => {
-      if (previewImage) {
-          const updatedUser = { ...user, profileImage: previewImage };
-          updateUser(updatedUser);
-          
-          DB.logs.add({
-              id: Date.now().toString(),
-              userId: user.id,
-              action: 'UPDATE_PROFILE_PIC',
-              timestamp: new Date().toISOString(),
-              details: 'User updated their profile picture'
-          });
+  const handleSaveImage = async () => {
+      if (!previewImage || !user) return;
 
-          setIsEditing(false);
-          setPreviewImage(null);
-          alert(t('profile_updated'));
-      }
+      const updatedUser = { ...user, profileImage: previewImage };
+      updateUser(updatedUser);
+
+      try {
+        await api.post('/activity-logs', {
+          user_id: user.id,
+          action: 'UPDATE_PROFILE_PIC',
+          details: 'User updated their profile picture',
+        });
+      } catch {}
+
+      setIsEditing(false);
+      setPreviewImage(null);
+      alert(t('profile_updated'));
   };
 
   const handleCancelImage = () => {
@@ -90,23 +88,21 @@ export const Profile = () => {
         <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-6">{t('my_profile')}</h2>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {/* Left Column: Profile Picture */}
             <div className="md:col-span-1">
                 <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col items-center text-center">
                     <div className="relative group mb-4">
-                        <img 
-                            src={previewImage || user.profileImage} 
-                            alt="Profile" 
-                            className="w-40 h-40 rounded-full object-cover border-4 border-slate-100 dark:border-slate-700 shadow-md transition-transform duration-300 group-hover:scale-105" 
+                        <img
+                            src={previewImage || user.profileImage}
+                            alt="Profile"
+                            className="w-40 h-40 rounded-full object-cover border-4 border-slate-100 dark:border-slate-700 shadow-md transition-transform duration-300 group-hover:scale-105"
                         />
-                        {/* Only Allow Editing if not currently previewing, or allow re-select */}
                         <label className="absolute inset-0 bg-black/40 rounded-full flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition text-white backdrop-blur-[2px]">
                             <Camera size={32} className="mb-2" />
                             <span className="text-xs font-medium px-2">{t('click_to_upload')}</span>
                             <input type="file" className="hidden" accept="image/jpeg,image/png" onChange={handleImageSelect} />
                         </label>
                     </div>
-                    
+
                     {isEditing ? (
                         <div className="flex gap-2 w-full">
                             <button onClick={handleSaveImage} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2">
@@ -128,10 +124,8 @@ export const Profile = () => {
                 </div>
             </div>
 
-            {/* Right Column: Details */}
             <div className="md:col-span-2 space-y-6">
-                
-                {/* Personal Info Card */}
+
                 <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
                     <div className="flex items-center gap-3 mb-6 border-b border-slate-100 dark:border-slate-700 pb-4">
                         <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg text-blue-600 dark:text-blue-400">
@@ -139,7 +133,7 @@ export const Profile = () => {
                         </div>
                         <h3 className="text-lg font-bold text-slate-800 dark:text-white">{t('personal_info')}</h3>
                     </div>
-                    
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">{t('full_name')}</label>
@@ -152,7 +146,6 @@ export const Profile = () => {
                     </div>
                 </div>
 
-                {/* Job Info Card */}
                 <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
                     <div className="flex items-center gap-3 mb-6 border-b border-slate-100 dark:border-slate-700 pb-4">
                         <div className="p-2 bg-purple-50 dark:bg-purple-900/30 rounded-lg text-purple-600 dark:text-purple-400">
@@ -160,7 +153,7 @@ export const Profile = () => {
                         </div>
                         <h3 className="text-lg font-bold text-slate-800 dark:text-white">{t('job_details')}</h3>
                     </div>
-                    
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">{t('department')}</label>
@@ -178,9 +171,8 @@ export const Profile = () => {
                     </div>
                 </div>
 
-                {/* Account Actions */}
                 <div className="flex justify-end">
-                    <button 
+                    <button
                         onClick={() => setIsRequestModalOpen(true)}
                         className="flex items-center gap-2 px-6 py-3 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl transition font-medium border border-slate-200 dark:border-slate-600"
                     >
@@ -192,7 +184,6 @@ export const Profile = () => {
             </div>
         </div>
 
-        {/* Request Modal */}
         {isRequestModalOpen && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
              <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl w-full max-w-md border border-slate-200 dark:border-slate-700 shadow-2xl">

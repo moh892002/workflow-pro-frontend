@@ -164,7 +164,7 @@ export interface FinancialRecord {
 export interface RecycleBinItem {
   id: string; // Unique ID in bin
   originalId: string; // ID of the item before deletion
-  type: 'USER' | 'TASK' | 'FINANCE' | 'REPORT';
+  type: 'USER' | 'TASK' | 'FINANCE' | 'DEPARTMENT' | 'ATTENDANCE' | 'REVIEW' | 'REPORT';
   data: any; // The full object
   deletedBy: string; // User Name
   deletedById: string; // User ID
