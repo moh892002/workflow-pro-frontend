@@ -6,7 +6,7 @@ import { Briefcase, Lock, User as UserIcon } from "lucide-react";
 export const Login = () => {
   const { login } = useAuth();
   const { t } = useLanguage();
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -16,18 +16,13 @@ export const Login = () => {
     setError("");
     setIsLoading(true);
 
-    // Simulate network delay for realism
-    setTimeout(async () => {
-      const success = await login(username, password);
-      if (success) {
-        // Login successful - router will handle navigation automatically
-        setIsLoading(false);
-      } else {
-        // Login failed
-        setError(t("error_login"));
-        setIsLoading(false);
-      }
-    }, 800);
+    const success = await login(email, password);
+    if (success) {
+      setIsLoading(false);
+    } else {
+      setError(t("error_login"));
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -54,19 +49,19 @@ export const Login = () => {
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="relative group">
             <input
-              type="text"
-              id="username"
+              type="email"
+              id="email"
               required
               className="peer w-full pl-4 pr-4 pt-6 pb-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition placeholder-transparent"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Username" // Kept for peer-shown logic, but visually hidden
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Email"
             />
             <label
-              htmlFor="username"
+              htmlFor="email"
               className="absolute left-4 top-2 text-xs text-slate-400 dark:text-slate-500 transition-all peer-placeholder-shown:text-base peer-placeholder-shown:top-3.5 peer-placeholder-shown:text-slate-400 peer-focus:top-2 peer-focus:text-xs peer-focus:text-accent"
             >
-              {t("username")}
+              {t("email")}
             </label>
           </div>
 
