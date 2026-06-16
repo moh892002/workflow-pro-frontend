@@ -72,16 +72,19 @@ export const Dashboard = () => {
   const [aiReport, setAiReport] = useState<PerformanceReport | null>(null);
 
   useEffect(() => {
+    const abortController = new AbortController();
+    const { signal } = abortController;
+
     const fetchData = async () => {
       try {
         setLoading(true);
         const todayStr = new Date().toISOString().split('T')[0];
 
         const [tasksRes, usersRes, logsRes, attendanceRes] = await Promise.all([
-          api.get('/tasks'),
-          api.get('/users'),
-          api.get('/activity-logs'),
-          api.get(`/attendance?date=${todayStr}`),
+          api.get('/tasks', { signal }),
+          api.get('/users', { signal }),
+          api.get('/activity-logs', { signal }),
+          api.get(`/attendance?date=${todayStr}`, { signal }),
         ]);
 
         const allTasks = (tasksRes.data.data || []).map(toFrontendTask);
@@ -128,7 +131,8 @@ export const Dashboard = () => {
           });
           setLogs(allLogs.filter(l => l.userId === user?.id).slice(0, 5));
         }
-      } catch {
+      } catch (err: any) {
+        if (err?.name === 'CanceledError') return;
         setStats({ employees: 0, active: 0, completed: 0, overdue: 0, present: 0, absent: 0, late: 0 });
         setLogs([]);
         setEmployeeTasks([]);
@@ -138,6 +142,8 @@ export const Dashboard = () => {
     };
 
     fetchData();
+
+    return () => abortController.abort();
   }, [user]);
 
   const handleAiAnalysis = async () => {

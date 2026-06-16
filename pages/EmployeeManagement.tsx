@@ -77,12 +77,12 @@ export const EmployeeManagement = () => {
     }
   }, [user, isAdmin, isHR, navigate]);
 
-  const fetchEmployees = async () => {
+  const fetchEmployees = async (signal?: AbortSignal) => {
     try {
       setLoading(true);
       const [usersRes, depsRes] = await Promise.all([
-        api.get('/users'),
-        api.get('/departments'),
+        api.get('/users', { signal }),
+        api.get('/departments', { signal }),
       ]);
       const deptData = depsRes.data.data;
       const deptList = Array.isArray(deptData) ? deptData : (deptData?.data || []);
@@ -92,7 +92,8 @@ export const EmployeeManagement = () => {
       const mapped = userList.map(toFrontendUser);
       setEmployees(mapped);
       setFilteredEmployees(mapped);
-    } catch {
+    } catch (err: any) {
+      if (err?.name === 'CanceledError') return;
       setEmployees([]);
       setFilteredEmployees([]);
     } finally {
@@ -111,7 +112,12 @@ export const EmployeeManagement = () => {
     fetchRequests();
   };
 
-  useEffect(() => { refresh() }, [user]);
+  useEffect(() => {
+    const abortController = new AbortController();
+    fetchEmployees(abortController.signal);
+    fetchRequests();
+    return () => abortController.abort();
+  }, [user]);
 
   useEffect(() => {
     if (departmentFilter) {

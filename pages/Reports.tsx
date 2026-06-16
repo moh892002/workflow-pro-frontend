@@ -49,13 +49,16 @@ export const Reports = () => {
         return;
     }
 
+    const abortController = new AbortController();
+
     const fetchUsers = async () => {
       try {
         setLoading(true);
-        const res = await api.get('/users');
+        const res = await api.get('/users', { signal: abortController.signal });
         const mapped = (res.data.data || []).map(toFrontendUser);
         setEmployees(mapped);
-      } catch {
+      } catch (err: any) {
+        if (err?.name === 'CanceledError') return;
         setEmployees([]);
       } finally {
         setLoading(false);
@@ -68,6 +71,8 @@ export const Reports = () => {
     const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).toISOString().split('T')[0];
     setStartDate(firstDay);
     setEndDate(lastDay);
+
+    return () => abortController.abort();
   }, [user, navigate]);
 
   const generateReport = async () => {

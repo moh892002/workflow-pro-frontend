@@ -94,18 +94,19 @@ export const Tasks = () => {
     };
   }
 
-  const refreshData = async () => {
+  const refreshData = async (signal?: AbortSignal) => {
     try {
       setLoading(true);
       const [tasksRes, usersRes] = await Promise.all([
-        api.get('/tasks'),
-        api.get('/users'),
+        api.get('/tasks', { signal }),
+        api.get('/users', { signal }),
       ]);
       const mappedTasks = (tasksRes.data.data || []).map(toFrontendTask);
       const mappedUsers = (usersRes.data.data || []).map(toFrontendUser);
       setTasks(mappedTasks);
       setUsers(mappedUsers);
-    } catch {
+    } catch (err: any) {
+      if (err?.name === 'CanceledError') return;
       setTasks([]);
       setUsers([]);
     } finally {
@@ -114,7 +115,9 @@ export const Tasks = () => {
   };
 
   useEffect(() => {
-    refreshData();
+    const abortController = new AbortController();
+    refreshData(abortController.signal);
+    return () => abortController.abort();
   }, []);
 
   const handleCreate = async (e: React.FormEvent) => {

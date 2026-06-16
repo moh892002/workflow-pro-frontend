@@ -1,5 +1,5 @@
-
 import React from 'react';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
@@ -78,15 +78,17 @@ const AppRoutes = () => {
 
 function App() {
   return (
+    <ErrorBoundary>
     <HashRouter>
       <AuthProvider>
         <ThemeProvider>
           <LanguageProvider>
              <AppRoutes />
-          </LanguageProvider>
+        </LanguageProvider>
         </ThemeProvider>
-      </AuthProvider>
-    </HashRouter>
+        </AuthProvider>
+      </HashRouter>
+    </ErrorBoundary>
   );
 }
 

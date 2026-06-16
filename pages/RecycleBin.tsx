@@ -55,16 +55,21 @@ export const RecycleBin = () => {
 
   const isAdmin = user?.role === Role.ADMIN;
 
-  useEffect(() => { refresh() }, []);
+  useEffect(() => {
+    const abortController = new AbortController();
+    refresh(abortController.signal);
+    return () => abortController.abort();
+  }, []);
 
-  const refresh = async () => {
+  const refresh = async (signal?: AbortSignal) => {
     try {
       setLoading(true);
-      const res = await api.get('/recycle-bin');
+      const res = await api.get('/recycle-bin', { signal });
       const data = res.data.data;
       const arr: any[] = Array.isArray(data) ? data : (data?.data || []);
       setItems(arr.map(toFrontendItem));
-    } catch {
+    } catch (err: any) {
+      if (err?.name === 'CanceledError') return;
       setItems([]);
     } finally {
       setLoading(false);

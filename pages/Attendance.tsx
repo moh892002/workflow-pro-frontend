@@ -23,19 +23,20 @@ export const Attendance = () => {
   const [history, setHistory] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const refreshData = async () => {
+  const refreshData = async (signal?: AbortSignal) => {
     try {
       setLoading(true);
       const [todayRes, historyRes] = await Promise.all([
-        api.get('/attendance/today'),
-        api.get('/attendance/history'),
+        api.get('/attendance/today', { signal }),
+        api.get('/attendance/history', { signal }),
       ]);
       const todayData = todayRes.data.data;
       setTodayRecord(todayData ? toFrontendRecord(todayData) : null);
       const records = (historyRes.data.data || []);
       const mapped = (records.data || records).map(toFrontendRecord);
       setHistory(mapped);
-    } catch {
+    } catch (err: any) {
+      if (err?.name === 'CanceledError') return;
       setTodayRecord(null);
       setHistory([]);
     } finally {
@@ -43,7 +44,11 @@ export const Attendance = () => {
     }
   };
 
-  useEffect(() => { refreshData() }, [user]);
+  useEffect(() => {
+    const abortController = new AbortController();
+    refreshData(abortController.signal);
+    return () => abortController.abort();
+  }, [user]);
 
   const handleCheckIn = async () => {
     try {

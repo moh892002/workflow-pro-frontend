@@ -70,14 +70,18 @@ export const Finance = () => {
       notes: ''
   });
 
-  useEffect(() => { refresh() }, []);
+  useEffect(() => {
+    const abortController = new AbortController();
+    refresh(abortController.signal);
+    return () => abortController.abort();
+  }, []);
 
-  const refresh = async () => {
+  const refresh = async (signal?: AbortSignal) => {
     try {
       setLoading(true);
       const [recordsRes, usersRes] = await Promise.all([
-        api.get('/records'),
-        api.get('/users'),
+        api.get('/records', { signal }),
+        api.get('/users', { signal }),
       ]);
 
       const usersData = usersRes.data.data || [];
@@ -92,7 +96,8 @@ export const Finance = () => {
       const recordsData = recordsRes.data.data;
       const recordsArray: any[] = recordsData.data || recordsData || [];
       setRecords(recordsArray.map((r: any) => toFrontendRecord(r, userMap)));
-    } catch {
+    } catch (err: any) {
+      if (err?.name === 'CanceledError') return;
       setRecords([]);
       setEmployees([]);
     } finally {
