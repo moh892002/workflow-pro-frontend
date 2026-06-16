@@ -1,20 +1,27 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { MainLayout } from './components/Layout/MainLayout';
-import { Login } from './pages/Login';
-import { Dashboard } from './pages/Dashboard';
-import { Tasks } from './pages/Tasks';
-import { EmployeeManagement } from './pages/EmployeeManagement';
-import { Chat } from './pages/Chat';
-import { Reports } from './pages/Reports';
-import { Finance } from './pages/Finance';
-import { RecycleBin } from './pages/RecycleBin';
-import { Profile } from './pages/Profile';
 import { Role } from './types';
+
+const Login = lazy(() => import('./pages/Login'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Tasks = lazy(() => import('./pages/Tasks'));
+const EmployeeManagement = lazy(() => import('./pages/EmployeeManagement'));
+const Chat = lazy(() => import('./pages/Chat'));
+const Reports = lazy(() => import('./pages/Reports'));
+const Finance = lazy(() => import('./pages/Finance'));
+const RecycleBin = lazy(() => import('./pages/RecycleBin'));
+const Profile = lazy(() => import('./pages/Profile'));
+
+const PageLoader = () => (
+  <div className="flex items-center justify-center min-h-[60vh]">
+    <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+  </div>
+);
 
 const ProtectedRoute = ({ 
   children, 
@@ -37,6 +44,7 @@ const ProtectedRoute = ({
 const AppRoutes = () => {
     const { isAuthenticated } = useAuth();
     return (
+        <Suspense fallback={<PageLoader />}>
         <Routes>
             <Route path="/login" element={!isAuthenticated ? <Login /> : <Navigate to="/" />} />
             
@@ -73,6 +81,7 @@ const AppRoutes = () => {
                 </ProtectedRoute>
             } />
         </Routes>
+        </Suspense>
     );
 }
 

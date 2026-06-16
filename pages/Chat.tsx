@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { DB } from '../services/db';
@@ -191,7 +191,10 @@ export const Chat = () => {
       else return (bytes / 1048576).toFixed(1) + ' MB';
   };
 
-  const filteredContacts = contacts.filter(c => c.fullName.toLowerCase().includes(searchTerm.toLowerCase()));
+  const filteredContacts = useMemo(() =>
+    contacts.filter(c => c.fullName.toLowerCase().includes(searchTerm.toLowerCase())),
+    [contacts, searchTerm]
+  );
 
   return (
     <div className="h-[calc(100vh-8rem)] flex rounded-2xl overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
@@ -498,3 +501,4 @@ export const Chat = () => {
     </div>
   );
 };
+export default Chat;

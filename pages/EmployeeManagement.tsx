@@ -583,3 +583,4 @@ export const EmployeeManagement = () => {
     </div>
   );
 };
+export default EmployeeManagement;

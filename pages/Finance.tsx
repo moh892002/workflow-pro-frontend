@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -144,14 +144,14 @@ export const Finance = () => {
       }
   };
 
-  const filteredRecords = records.filter(r => {
+  const filteredRecords = useMemo(() => records.filter(r => {
       const matchDept = filterDept ? r.department === filterDept : true;
       const matchType = filterType ? r.type === filterType : true;
       const matchSearch = r.employeeName.toLowerCase().includes(search.toLowerCase());
       return matchDept && matchType && matchSearch;
-  });
+  }), [records, filterDept, filterType, search]);
 
-  const totalAmount = filteredRecords.reduce((acc, curr) => acc + curr.amount, 0);
+  const totalAmount = useMemo(() => filteredRecords.reduce((acc, curr) => acc + curr.amount, 0), [filteredRecords]);
 
   return (
     <div className="animate-fade-in space-y-6">
@@ -286,3 +286,4 @@ export const Finance = () => {
     </div>
   );
 };
+export default Finance;

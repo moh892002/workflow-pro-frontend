@@ -204,3 +204,4 @@ export const RecycleBin = () => {
     </div>
   );
 };
+export default RecycleBin;

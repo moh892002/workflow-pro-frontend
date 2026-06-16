@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -173,9 +173,12 @@ export const Tasks = () => {
     }
   };
 
-  const filteredTasks = tasks.filter(task =>
-    task.title.toLowerCase().includes(filter.toLowerCase()) &&
-    (user?.role === Role.ADMIN || task.assignedToId === user?.id || task.assignedById === user?.id)
+  const filteredTasks = useMemo(() =>
+    tasks.filter(task =>
+      task.title.toLowerCase().includes(filter.toLowerCase()) &&
+      (user?.role === Role.ADMIN || task.assignedToId === user?.id || task.assignedById === user?.id)
+    ),
+    [tasks, filter, user]
   );
 
   const getPriorityColor = (p: TaskPriority) => {
@@ -330,3 +333,4 @@ export const Tasks = () => {
     </div>
   );
 };
+export default Tasks;
