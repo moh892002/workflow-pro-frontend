@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useLanguage } from "../context/LanguageContext";
-import { AlertTriangle, X } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 
 interface DeletionModalProps {
   isOpen: boolean;

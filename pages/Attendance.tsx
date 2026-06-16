@@ -3,7 +3,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { AttendanceRecord } from '../types';
-import { Clock, MapPin } from 'lucide-react';
+import { MapPin } from 'lucide-react';
 import { Skeleton, TableSkeleton } from '../components/Skeleton';
 
 function toFrontendRecord(data: any): AttendanceRecord {

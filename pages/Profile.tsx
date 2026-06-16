@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import api from '../services/api';
 import { DB } from '../services/db';
-import { User, RequestType, RequestStatus } from '../types';
+import { RequestType, RequestStatus } from '../types';
 import { Camera, Save, X, User as UserIcon, Briefcase, Building, Lock, Edit3 } from 'lucide-react';
 
 export const Profile = () => {

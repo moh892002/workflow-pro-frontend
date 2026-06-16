@@ -3,7 +3,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { User, Role, FinancialRecord, TransactionType, DEPARTMENTS } from '../types';
-import { DollarSign, Plus, Trash2, FileText, Download, Filter, Search } from 'lucide-react';
+import { DollarSign, Plus, Trash2, Download, Search } from 'lucide-react';
 import { TableSkeleton } from '../components/Skeleton';
 
 const TX_TYPE_MAP: Record<string, TransactionType> = {

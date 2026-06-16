@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../context/LanguageContext";
-import { Briefcase, Lock, User as UserIcon } from "lucide-react";
+import { Briefcase } from "lucide-react";
 
 export const Login = () => {
   const { login } = useAuth();
