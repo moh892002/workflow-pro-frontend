@@ -1,14 +1,15 @@
 /* CSS File */
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --color-primary: #0f172a;
   --color-primary-light: #1e293b;
   --color-accent: #10b981;
   --color-accent-hover: #059669;
   --color-secondary: #f1f5f9;
-  --font-family-sans: "Inter", "Cairo", sans-serif;
-  --dark-mode: class;
+  --font-sans: "Inter", "Cairo", sans-serif;
   --animate-fade-in: fadeIn 0.5s ease-in-out;
 }
 
