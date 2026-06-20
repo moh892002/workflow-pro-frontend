@@ -1,23 +1,13 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
-import { Task, TaskPriority, TaskStatus, User, Role } from '../types';
+import { Task, TaskPriority, TaskStatus, Role } from '../types';
 import { Plus, Search, Calendar, User as UserIcon, Trash2 } from 'lucide-react';
 import { TableSkeleton } from '../components/Skeleton';
-
-const PRIORITY_MAP: Record<string, TaskPriority> = {
-  LOW: TaskPriority.LOW,
-  MEDIUM: TaskPriority.MEDIUM,
-  HIGH: TaskPriority.HIGH,
-  URGENT: TaskPriority.CRITICAL,
-};
-const PRIORITY_REVERSE: Record<string, string> = {
-  [TaskPriority.LOW]: 'LOW',
-  [TaskPriority.MEDIUM]: 'MEDIUM',
-  [TaskPriority.HIGH]: 'HIGH',
-  [TaskPriority.CRITICAL]: 'URGENT',
-};
+import { useTasks, useCreateTask, useUpdateTask, useDeleteTask } from '../hooks/queries/useTasks';
+import { useUsers } from '../hooks/queries/useUsers';
+import { useCreateActivityLog } from '../hooks/queries/useActivityLogs';
 
 const STATUS_MAP: Record<string, TaskStatus> = {
   pending: TaskStatus.PENDING,
@@ -31,47 +21,18 @@ const STATUS_REVERSE: Record<string, string> = {
   [TaskStatus.OVERDUE]: 'pending',
 };
 
-function toFrontendTask(data: any): Task {
-  const status = STATUS_MAP[data.status] || TaskStatus.PENDING;
-  const deadline = data.deadline_date || '';
-  let computedStatus = status;
-  if (status !== TaskStatus.COMPLETED && deadline && new Date(deadline) < new Date(new Date().toDateString())) {
-    computedStatus = TaskStatus.OVERDUE;
-  }
-  return {
-    id: String(data.id),
-    title: data.title || '',
-    description: data.description || '',
-    assignedToId: data.assigned_to ? String(data.assigned_to) : '',
-    assignedToName: data.user?.fullname || 'Unknown',
-    priority: PRIORITY_MAP[data.priority] || TaskPriority.MEDIUM,
-    status: computedStatus,
-    deadline,
-    progress: computedStatus === TaskStatus.COMPLETED ? 100 : computedStatus === TaskStatus.IN_PROGRESS ? 50 : 0,
-    createdAt: data.created_at || '',
-  };
-}
-
-function toBackendTask(task: Partial<Task>) {
-  return {
-    title: task.title,
-    description: task.description || '',
-    priority: PRIORITY_REVERSE[task.priority || TaskPriority.MEDIUM],
-    status: STATUS_REVERSE[task.status || TaskStatus.PENDING],
-    deadline_date: task.deadline,
-    assigned_to: task.assignedToId || null,
-  };
-}
-
 export const Tasks = () => {
   const { t } = useLanguage();
   const { user } = useAuth();
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const { data: tasks = [], isLoading } = useTasks();
+  const { data: allUsers = [] } = useUsers();
+  const createTask = useCreateTask();
+  const updateTask = useUpdateTask();
+  const deleteTask = useDeleteTask();
+  const createLog = useCreateActivityLog();
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [filter, setFilter] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [assignableUsers, setAssignableUsers] = useState<User[]>([]);
-  const [loadingUsers, setLoadingUsers] = useState(false);
 
   const [newTask, setNewTask] = useState<Partial<Task>>({
     priority: TaskPriority.MEDIUM,
@@ -81,81 +42,29 @@ export const Tasks = () => {
   const canCreate = user?.role === Role.ADMIN || user?.role === Role.HR_MANAGER || user?.role === Role.OPS_MANAGER;
   const isAdmin = user?.role === Role.ADMIN;
 
-  const fetchAssignableUsers = useCallback(async () => {
-    setLoadingUsers(true);
-    try {
-      const res = await api.get('/users');
-      const mapped = (res.data.data || []).map((u: any) => ({
-        id: String(u.id),
-        fullName: u.fullname || '',
-        username: u.username || '',
-        role: u.role || Role.EMPLOYEE,
-        department: u.department?.name || '',
-        salary: u.salary,
-        isActive: u.deleted_at === null,
-        profileImage: u.image_url || `https://ui-avatars.com/api/?name=${u.fullname}&background=random`,
-        jobTitle: u.job_title || '',
-        isBot: false,
-      }));
-      setAssignableUsers(mapped);
-    } catch {
-      setAssignableUsers([]);
-    } finally {
-      setLoadingUsers(false);
-    }
-  }, []);
-
-  const refreshData = async (signal?: AbortSignal) => {
-    try {
-      setLoading(true);
-      const tasksRes = await api.get('/tasks', { signal });
-      const mappedTasks = (tasksRes.data.data || []).map(toFrontendTask);
-      setTasks(mappedTasks);
-    } catch (err: any) {
-      if (err?.name === 'CanceledError') return;
-      setTasks([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    const abortController = new AbortController();
-    refreshData(abortController.signal);
-    return () => abortController.abort();
-  }, []);
-
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTask.title || !newTask.assignedToId || !newTask.deadline || !user) return;
 
     try {
-      const body = toBackendTask(newTask);
-      await api.post('/tasks', body);
-      await api.post('/activity-logs', {
-        user_id: user.id,
-        action: 'CREATE_TASK',
-        details: `Created task: ${newTask.title}`,
-      });
+      await createTask.mutateAsync(newTask);
+      if (createLog.isIdle) {
+        await createLog.mutateAsync({
+          user_id: user.id,
+          action: 'CREATE_TASK',
+          details: `Created task: ${newTask.title}`,
+        });
+      }
       setIsModalOpen(false);
       setNewTask({ priority: TaskPriority.MEDIUM, status: TaskStatus.PENDING });
-      await refreshData();
     } catch {
       alert('Failed to create task');
     }
   };
 
   const handleStatusChange = async (taskId: string, newStatus: TaskStatus) => {
-    const task = tasks.find(t => t.id === taskId);
-    if (!task) return;
-
     try {
-      const backendStatus = STATUS_REVERSE[newStatus] || 'pending';
-      await api.put(`/tasks/${taskId}`, {
-        ...toBackendTask(task),
-        status: backendStatus,
-      });
-      await refreshData();
+      await updateTask.mutateAsync({ taskId, task: { status: newStatus } });
     } catch {
       alert('Failed to update task status');
     }
@@ -165,13 +74,12 @@ export const Tasks = () => {
     if (!user || !isAdmin) return;
     if (!confirm("Move this task to Recycle Bin?")) return;
     try {
-      await api.delete(`/tasks/${id}`);
-      await api.post('/activity-logs', {
+      await deleteTask.mutateAsync(id);
+      await createLog.mutateAsync({
         user_id: user.id,
         action: 'DELETE_TASK',
         details: `Deleted task: ${tasks.find(t => t.id === id)?.title || id}`,
       });
-      await refreshData();
     } catch {
       alert('Failed to delete task');
     }
@@ -214,7 +122,7 @@ export const Tasks = () => {
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold text-slate-800 dark:text-white">{t('tasks')}</h2>
           {canCreate && (
-          <button onClick={() => { setIsModalOpen(true); fetchAssignableUsers(); }} className="bg-primary hover:bg-primary-light text-white px-4 py-2 rounded-lg flex items-center gap-2 transition shadow-lg shadow-blue-900/20">
+          <button onClick={() => setIsModalOpen(true)} className="bg-primary hover:bg-primary-light text-white px-4 py-2 rounded-lg flex items-center gap-2 transition shadow-lg shadow-blue-900/20">
             <Plus size={20} />
             {t('create_task')}
           </button>
@@ -234,7 +142,7 @@ export const Tasks = () => {
         </div>
       </div>
 
-      {loading ? (
+      {isLoading ? (
         <TableSkeleton rows={6} />
       ) : (
         <div className="grid gap-4">
@@ -311,12 +219,12 @@ export const Tasks = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1 text-slate-700 dark:text-slate-300">{t('assign_to')}</label>
-                  <select required className="w-full border dark:border-slate-600 rounded-lg p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" onChange={e => setNewTask({...newTask, assignedToId: e.target.value})}>
-                    <option value="">{loadingUsers ? 'Loading...' : 'Select Employee'}</option>
-                    {assignableUsers.filter(u => u.role !== Role.ADMIN).map(u => (
-                      <option key={u.id} value={u.id}>{u.fullName}</option>
-                    ))}
-                  </select>
+                    <select required className="w-full border dark:border-slate-600 rounded-lg p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" onChange={e => setNewTask({...newTask, assignedToId: e.target.value})}>
+                      <option value="">Select Employee</option>
+                      {allUsers.filter(u => u.role !== Role.ADMIN).map(u => (
+                        <option key={u.id} value={u.id}>{u.fullName}</option>
+                      ))}
+                    </select>
                 </div>
               </div>
               <div>

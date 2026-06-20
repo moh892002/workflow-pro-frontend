@@ -1,65 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
-import api from '../services/api';
-import { AttendanceRecord } from '../types';
 import { MapPin } from 'lucide-react';
 import { Skeleton, TableSkeleton } from '../components/Skeleton';
-
-function toFrontendRecord(data: any): AttendanceRecord {
-  return {
-    id: data.id || String(Date.now()),
-    userId: data.user_id || '',
-    date: data.date || '',
-    checkIn: data.check_in || null,
-    checkOut: data.check_out || null,
-    status: data.status || 'PRESENT',
-  };
-}
+import { useTodayAttendance, useAttendanceHistory, useCheckIn, useCheckOut } from '../hooks/queries/useAttendance';
 
 export const Attendance = () => {
   const { t } = useLanguage();
   const { user } = useAuth();
-  const [todayRecord, setTodayRecord] = useState<AttendanceRecord | null>(null);
-  const [history, setHistory] = useState<AttendanceRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: todayRecord, isLoading: todayLoading } = useTodayAttendance();
+  const { data: history = [], isLoading: historyLoading } = useAttendanceHistory();
+  const checkInMutation = useCheckIn();
+  const checkOutMutation = useCheckOut();
 
-  const refreshData = async (signal?: AbortSignal) => {
-    try {
-      setLoading(true);
-      const [todayRes, historyRes] = await Promise.all([
-        api.get('/attendance/today', { signal }),
-        api.get('/attendance/history', { signal }),
-      ]);
-      const todayData = todayRes.data.data;
-      setTodayRecord(todayData ? toFrontendRecord(todayData) : null);
-      const records = (historyRes.data.data || []);
-      const mapped = (records.data || records).map(toFrontendRecord);
-      setHistory(mapped);
-    } catch (err: any) {
-      if (err?.name === 'CanceledError') return;
-      setTodayRecord(null);
-      setHistory([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    const abortController = new AbortController();
-    refreshData(abortController.signal);
-    return () => abortController.abort();
-  }, [user]);
+  const loading = todayLoading || historyLoading;
 
   const handleCheckIn = async () => {
     try {
-      const res = await api.post('/attendance/check-in');
-      setTodayRecord(toFrontendRecord(res.data.data));
-      await refreshData();
+      await checkInMutation.mutateAsync();
     } catch (err: any) {
       if (err.response?.status === 409) {
         alert('Already checked in today');
-        await refreshData();
       } else {
         alert('Failed to check in');
       }
@@ -69,8 +30,7 @@ export const Attendance = () => {
   const handleCheckOut = async () => {
     if (!todayRecord) return;
     try {
-      await api.put(`/attendance/${todayRecord.id}/check-out`);
-      await refreshData();
+      await checkOutMutation.mutateAsync(todayRecord.id);
     } catch {
       alert('Failed to check out');
     }

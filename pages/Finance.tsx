@@ -1,18 +1,13 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
-import { User, Role, FinancialRecord, TransactionType, DEPARTMENTS } from '../types';
+import { FinancialRecord, TransactionType, DEPARTMENTS } from '../types';
 import { DollarSign, Plus, Trash2, Download, Search } from 'lucide-react';
 import { TableSkeleton } from '../components/Skeleton';
+import { useFinanceRecords, useCreateFinanceRecord, useDeleteFinanceRecord } from '../hooks/queries/useFinance';
+import { useCreateActivityLog } from '../hooks/queries/useActivityLogs';
 
-const TX_TYPE_MAP: Record<string, TransactionType> = {
-  salary: TransactionType.SALARY,
-  bonus: TransactionType.BONUS,
-  deduction: TransactionType.DEDUCTION,
-  advance: TransactionType.ADVANCE,
-  overtime: TransactionType.OVERTIME,
-};
 const TX_TYPE_REVERSE: Record<string, string> = {
   [TransactionType.SALARY]: 'salary',
   [TransactionType.BONUS]: 'bonus',
@@ -21,44 +16,18 @@ const TX_TYPE_REVERSE: Record<string, string> = {
   [TransactionType.OVERTIME]: 'overtime',
 };
 
-function toFrontendRecord(data: any, users: Map<string, string>): FinancialRecord {
-  const userId = String(data.user_id || '');
-  return {
-    id: String(data.id),
-    employeeId: userId,
-    employeeName: users.get(userId) || data.user?.fullname || data.user?.name || 'Unknown',
-    department: data.user?.department?.name || '',
-    type: TX_TYPE_MAP[data.transaction_type] || TransactionType.SALARY,
-    amount: Number(data.amount) || 0,
-    date: data.transaction_date || '',
-    notes: data.notes || '',
-    createdBy: '',
-    createdAt: data.created_at || '',
-  };
-}
-
-function toFrontendUser(data: any): User {
-  return {
-    id: String(data.id),
-    fullName: data.fullname || '',
-    username: data.username || '',
-    role: data.role || Role.EMPLOYEE,
-    department: data.department?.name || '',
-    salary: data.salary,
-    isActive: data.deleted_at === null,
-    profileImage: data.image_url || `https://ui-avatars.com/api/?name=${data.fullname}&background=random`,
-    jobTitle: data.job_title || '',
-    isBot: false,
-  };
-}
-
 export const Finance = () => {
   const { t } = useLanguage();
   const { user } = useAuth();
-  const [records, setRecords] = useState<FinancialRecord[]>([]);
-  const [employees, setEmployees] = useState<User[]>([]);
+  const { data, isLoading } = useFinanceRecords();
+  const createRecord = useCreateFinanceRecord();
+  const deleteRecord = useDeleteFinanceRecord();
+  const createLog = useCreateActivityLog();
+
+  const records = data?.records || [];
+  const employees = data?.employees || [];
+
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
 
   const [filterDept, setFilterDept] = useState('');
   const [filterType, setFilterType] = useState('');
@@ -71,47 +40,11 @@ export const Finance = () => {
       notes: ''
   });
 
-  useEffect(() => {
-    const abortController = new AbortController();
-    refresh(abortController.signal);
-    return () => abortController.abort();
-  }, []);
-
-  const refresh = async (signal?: AbortSignal) => {
-    try {
-      setLoading(true);
-      const [recordsRes, usersRes] = await Promise.all([
-        api.get('/records', { signal }),
-        api.get('/users', { signal }),
-      ]);
-
-      const usersData = usersRes.data.data || [];
-      const userMap = new Map<string, string>();
-      const mappedUsers = usersData.map((u: any) => {
-        const fu = toFrontendUser(u);
-        userMap.set(fu.id, fu.fullName);
-        return fu;
-      });
-      setEmployees(mappedUsers);
-
-      const recordsData = recordsRes.data.data;
-      const recordsArray: any[] = recordsData.data || recordsData || [];
-      setRecords(recordsArray.map((r: any) => toFrontendRecord(r, userMap)));
-    } catch (err: any) {
-      if (err?.name === 'CanceledError') return;
-      setRecords([]);
-      setEmployees([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleDelete = async (id: string) => {
       if (!user) return;
       if (!confirm("Move to Recycle Bin?")) return;
       try {
-        await api.delete(`/records/${id}`);
-        await refresh();
+        await deleteRecord.mutateAsync(id);
       } catch {
         alert('Failed to delete record');
       }
@@ -122,23 +55,22 @@ export const Finance = () => {
       if (!user || !formData.employeeId || !formData.amount) return;
 
       try {
-        await api.post('/records', {
+        await createRecord.mutateAsync({
           user_id: formData.employeeId,
           transaction_type: TX_TYPE_REVERSE[formData.type || TransactionType.SALARY],
           amount: Number(formData.amount),
-          transaction_date: formData.date,
+          transaction_date: formData.date || new Date().toISOString().split('T')[0],
           notes: formData.notes || '',
         });
 
         const emp = employees.find(e => e.id === formData.employeeId);
-        await api.post('/activity-logs', {
+        await createLog.mutateAsync({
           user_id: user.id,
           action: 'ADD_FINANCE',
           details: `Added ${formData.type} ($${formData.amount}) for ${emp?.fullName || formData.employeeId}`,
         });
 
         setIsModalOpen(false);
-        await refresh();
       } catch {
         alert('Failed to add record');
       }
@@ -195,7 +127,7 @@ export const Finance = () => {
            </div>
        </div>
 
-       {loading ? (
+       {isLoading ? (
          <TableSkeleton rows={6} />
        ) : (
          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">

@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
-import { LayoutDashboard, Users, CheckSquare, FileText, LogOut, Briefcase, MessageSquare, DollarSign, Trash2, UserCircle } from 'lucide-react';
+import { LayoutDashboard, Users, CheckSquare, FileText, LogOut, Briefcase, MessageSquare, DollarSign, Trash2, UserCircle, Calendar } from 'lucide-react';
 import { Role } from '../../types';
 import { DB } from '../../services/db';
 
@@ -62,6 +62,11 @@ export const Sidebar = () => {
         <NavLink to="/tasks" className={linkClass}>
           <CheckSquare size={20} />
           <span>{t('tasks')}</span>
+        </NavLink>
+
+        <NavLink to="/attendance" className={linkClass}>
+          <Calendar size={20} />
+          <span>{t('attendance')}</span>
         </NavLink>
         
         {canViewFinance && (

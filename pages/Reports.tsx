@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
-import { User, Role, AttendanceRecord } from '../types';
+import { Role, AttendanceRecord } from '../types';
 import { FileText, Printer, Clock, UserX, UserCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Skeleton } from '../components/Skeleton';
+import { useUsers } from '../hooks/queries/useUsers';
+import { useCreateActivityLog } from '../hooks/queries/useActivityLogs';
 
 interface ReportStats {
   totalDays: number;
@@ -16,27 +18,13 @@ interface ReportStats {
   averageHours: number;
 }
 
-function toFrontendUser(data: any): User {
-  return {
-    id: String(data.id),
-    fullName: data.fullname || '',
-    username: data.username || '',
-    role: data.role || Role.EMPLOYEE,
-    department: data.department?.name || '',
-    salary: data.salary,
-    isActive: data.deleted_at === null,
-    profileImage: data.image_url || `https://ui-avatars.com/api/?name=${data.fullname}&background=random`,
-    jobTitle: data.job_title || '',
-    isBot: false,
-  };
-}
-
 export const Reports = () => {
   const { t } = useLanguage();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { data: employees = [], isLoading: usersLoading } = useUsers();
+  const createLog = useCreateActivityLog();
 
-  const [employees, setEmployees] = useState<User[]>([]);
   const [selectedUser, setSelectedUser] = useState<string>('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -50,30 +38,12 @@ export const Reports = () => {
         return;
     }
 
-    const abortController = new AbortController();
-
-    const fetchUsers = async () => {
-      try {
-        setLoading(true);
-        const res = await api.get('/users', { signal: abortController.signal });
-        const mapped = (res.data.data || []).map(toFrontendUser);
-        setEmployees(mapped);
-      } catch (err: any) {
-        if (err?.name === 'CanceledError') return;
-        setEmployees([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchUsers();
-
     const date = new Date();
     const firstDay = new Date(date.getFullYear(), date.getMonth(), 1).toISOString().split('T')[0];
     const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).toISOString().split('T')[0];
     setStartDate(firstDay);
     setEndDate(lastDay);
-
-    return () => abortController.abort();
+    setLoading(false);
   }, [user, navigate]);
 
   const generateReport = async () => {
@@ -111,7 +81,7 @@ export const Reports = () => {
 
       if (user?.role === Role.HR_MANAGER) {
         const targetUser = employees.find(e => e.id === selectedUser)?.fullName || selectedUser;
-        await api.post('/activity-logs', {
+        await createLog.mutateAsync({
           user_id: user.id,
           action: 'GENERATE_REPORT',
           details: `Generated report for employee: ${targetUser}`,
@@ -127,9 +97,9 @@ export const Reports = () => {
   const handlePrint = async () => {
     window.print();
 
-    if (user?.role === Role.HR_MANAGER) {
+    if (user?.role === Role.HR_MANAGER && createLog.isIdle) {
       try {
-        await api.post('/activity-logs', {
+        await createLog.mutateAsync({
           user_id: user.id,
           action: 'PRINT_REPORT',
           details: `Printed report for employee ID: ${selectedUser}`,

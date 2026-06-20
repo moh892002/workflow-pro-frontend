@@ -1,159 +1,28 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
-import api from '../services/api';
 import { AIService } from '../services/ai';
-import { Task, ActivityLog, TaskStatus, Role, PerformanceReport, AttendanceRecord } from '../types';
+import { Role, PerformanceReport, TaskStatus, Task } from '../types';
 import { Users, CheckCircle, AlertCircle, Briefcase, Calendar, BrainCircuit, Sparkles, UserCheck, UserX, Clock } from 'lucide-react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
 import { StatsGridSkeleton, Skeleton } from '../components/Skeleton';
-
-function toFrontendTask(data: any): Task {
-  const priorityMap: Record<string, any> = { LOW: 'LOW', MEDIUM: 'MEDIUM', HIGH: 'HIGH', URGENT: 'CRITICAL' };
-  const statusMap: Record<string, any> = { pending: 'PENDING', in_progress: 'IN_PROGRESS', completed: 'COMPLETED' };
-  const status = statusMap[data.status] || 'PENDING';
-  const deadline = data.deadline_date || '';
-  let computedStatus = status;
-  if (status !== 'COMPLETED' && deadline && new Date(deadline) < new Date(new Date().toDateString())) {
-    computedStatus = 'OVERDUE';
-  }
-  return {
-    id: String(data.id),
-    title: data.title || '',
-    description: data.description || '',
-    assignedToId: data.assigned_to ? String(data.assigned_to) : '',
-    assignedToName: data.user?.fullname || 'Unknown',
-    priority: priorityMap[data.priority] || 'MEDIUM',
-    status: computedStatus,
-    deadline,
-    progress: computedStatus === 'COMPLETED' ? 100 : computedStatus === 'IN_PROGRESS' ? 50 : 0,
-    createdAt: data.created_at || '',
-  };
-}
-
-function toFrontendLog(data: any): ActivityLog {
-  return {
-    id: String(data.id),
-    userId: data.user_id || '',
-    action: data.action || '',
-    timestamp: data.created_at || data.timestamp || '',
-    details: data.details || '',
-  };
-}
-
-function toFrontendAttendance(data: any): AttendanceRecord {
-  return {
-    id: data.id || String(Date.now()),
-    userId: data.user_id || '',
-    date: data.date || '',
-    checkIn: data.check_in || null,
-    checkOut: data.check_out || null,
-    status: data.status || 'PRESENT',
-  };
-}
+import { useDashboardData } from '../hooks/queries/useDashboard';
+import { useTasks } from '../hooks/queries/useTasks';
 
 export const Dashboard = () => {
   const { t } = useLanguage();
   const { user } = useAuth();
-  const [stats, setStats] = useState({
-    employees: 0,
-    active: 0,
-    completed: 0,
-    overdue: 0,
-    present: 0,
-    absent: 0,
-    late: 0
-  });
-  const [logs, setLogs] = useState<ActivityLog[]>([]);
-  const [employeeTasks, setEmployeeTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { stats, logs, employeeTasks, isLoading } = useDashboardData(user);
+  const { data: allCachedTasks = [] } = useTasks();
 
-  // AI State
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiReport, setAiReport] = useState<PerformanceReport | null>(null);
-
-  useEffect(() => {
-    const abortController = new AbortController();
-    const { signal } = abortController;
-
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const todayStr = new Date().toISOString().split('T')[0];
-
-        const [tasksRes, usersRes, logsRes, attendanceRes] = await Promise.all([
-          api.get('/tasks', { signal }),
-          api.get('/users', { signal }),
-          api.get('/activity-logs', { signal }),
-          api.get(`/attendance?date=${todayStr}`, { signal }),
-        ]);
-
-        const allTasks = (tasksRes.data.data || []).map(toFrontendTask);
-        const allUsers = (usersRes.data.data || []).filter((u: any) => !u.isBot).map((u: any) => ({
-          id: String(u.id),
-          isActive: u.deleted_at === null,
-          role: u.role,
-        }));
-        const activeEmployees = allUsers.filter((u: any) => u.isActive);
-        const allLogs = (logsRes.data.data || []).map(toFrontendLog);
-
-        const todayRecords = (attendanceRes.data.data || []).map(toFrontendAttendance);
-
-        const presentCount = todayRecords.length;
-        const lateCount = todayRecords.filter(r => {
-          if (!r.checkIn) return false;
-          const d = new Date(r.checkIn);
-          return d.getHours() > 9 || (d.getHours() === 9 && d.getMinutes() > 0);
-        }).length;
-        const absentCount = Math.max(0, activeEmployees.length - presentCount);
-
-        if (user?.role === Role.ADMIN) {
-          setStats({
-            employees: activeEmployees.length,
-            active: allTasks.filter(t => t.status === TaskStatus.IN_PROGRESS || t.status === TaskStatus.PENDING).length,
-            completed: allTasks.filter(t => t.status === TaskStatus.COMPLETED).length,
-            overdue: allTasks.filter(t => t.status === TaskStatus.OVERDUE).length,
-            present: presentCount,
-            absent: absentCount,
-            late: lateCount,
-          });
-          setLogs(allLogs.slice(0, 5));
-        } else {
-          const myTasks = allTasks.filter(t => t.assignedToId === user?.id);
-          setEmployeeTasks(myTasks);
-          setStats({
-            employees: 0,
-            active: myTasks.filter(t => t.status === TaskStatus.IN_PROGRESS || t.status === TaskStatus.PENDING).length,
-            completed: myTasks.filter(t => t.status === TaskStatus.COMPLETED).length,
-            overdue: myTasks.filter(t => t.status === TaskStatus.OVERDUE).length,
-            present: presentCount,
-            absent: absentCount,
-            late: lateCount,
-          });
-          setLogs(allLogs.filter(l => l.userId === user?.id).slice(0, 5));
-        }
-      } catch (err: any) {
-        if (err?.name === 'CanceledError') return;
-        setStats({ employees: 0, active: 0, completed: 0, overdue: 0, present: 0, absent: 0, late: 0 });
-        setLogs([]);
-        setEmployeeTasks([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-
-    return () => abortController.abort();
-  }, [user]);
 
   const handleAiAnalysis = async () => {
     if (!user) return;
     setIsAnalyzing(true);
     try {
-      const res = await api.get('/tasks');
-      const allTasks = (res.data.data || []).map(toFrontendTask);
-      const tasksToAnalyze = user.role === Role.ADMIN ? allTasks : allTasks.filter(t => t.assignedToId === user?.id);
+      const tasksToAnalyze = user.role === Role.ADMIN ? allCachedTasks : allCachedTasks.filter((t: Task) => t.assignedToId === user?.id);
       const report = await AIService.analyzePerformance(tasksToAnalyze, user.fullName);
       setAiReport(report);
     } catch {
@@ -209,7 +78,7 @@ export const Dashboard = () => {
       return 'text-red-500';
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="space-y-8 animate-fade-in">
         <div className="flex items-center justify-between">

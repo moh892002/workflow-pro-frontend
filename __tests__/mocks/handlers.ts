@@ -137,6 +137,99 @@ export const handlers = [
       data: mockAttendance.filter((a) => a.date === date),
     });
   }),
+
+  http.get("http://localhost:8000/api/attendance/today", () => {
+    return HttpResponse.json({
+      success: true,
+      data: mockAttendance[0] || null,
+    });
+  }),
+
+  http.get("http://localhost:8000/api/attendance/history", () => {
+    return HttpResponse.json({
+      success: true,
+      data: mockAttendance,
+    });
+  }),
+
+  http.post("http://localhost:8000/api/attendance/check-in", () => {
+    return HttpResponse.json({
+      success: true,
+      data: { ...mockAttendance[0], check_in: new Date().toISOString() },
+    });
+  }),
+
+  http.put("http://localhost:8000/api/attendance/:id/check-out", () => {
+    return HttpResponse.json({
+      success: true,
+      data: { check_out: new Date().toISOString() },
+    });
+  }),
+
+  http.get("http://localhost:8000/api/departments", () => {
+    return HttpResponse.json({
+      success: true,
+      data: [
+        { id: 1, name: "Executive Management" },
+        { id: 2, name: "Engineering" },
+      ],
+    });
+  }),
+
+  http.get("http://localhost:8000/api/records", () => {
+    return HttpResponse.json({
+      success: true,
+      data: [
+        { id: 1, user_id: "1", transaction_type: "salary", amount: 5000, transaction_date: "2026-06-01", notes: "Monthly salary", user: { fullname: "Abdalraheem Fadda", department: { name: "Executive Management" } } },
+      ],
+    });
+  }),
+
+  http.post("http://localhost:8000/api/records", async ({ request }) => {
+    return HttpResponse.json({ success: true, data: {} }, { status: 201 });
+  }),
+
+  http.delete("http://localhost:8000/api/records/:id", () => {
+    return HttpResponse.json({ success: true, message: "Deleted" });
+  }),
+
+  http.get("http://localhost:8000/api/recycle-bin", () => {
+    return HttpResponse.json({
+      success: true,
+      data: [
+        {
+          id: 1,
+          deleted_item_id: 99,
+          deleted_model: "App\\Models\\Task",
+          deleted_data: { title: "Old Task" },
+          deleted_by: "1",
+          deleted_at: new Date().toISOString(),
+          user: { fullname: "Abdalraheem Fadda" },
+        },
+      ],
+    });
+  }),
+
+  http.post("http://localhost:8000/api/recycle-bin/:model/:id/restore", () => {
+    return HttpResponse.json({ success: true, message: "Restored" });
+  }),
+
+  http.delete("http://localhost:8000/api/recycle-bin/:model/:id/force", () => {
+    return HttpResponse.json({ success: true, message: "Deleted permanently" });
+  }),
+
+  http.get("http://localhost:8000/api/reports/attendance", () => {
+    return HttpResponse.json({
+      success: true,
+      data: {
+        employee: { id: "1", fullname: "Abdalraheem Fadda" },
+        stats: { total_days: 20, present_days: 18, absent_days: 2, late_days: 1, total_hours: 144, average_hours: 8 },
+        daily_breakdown: [
+          { date: "2026-06-01", check_in: "09:00", check_out: "17:00", status: "PRESENT" },
+        ],
+      },
+    });
+  }),
 ];
 
 export { tasksStore };

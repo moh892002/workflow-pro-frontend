@@ -1,4 +1,6 @@
 import React, { Suspense, lazy } from 'react';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from './services/queryClient';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -10,6 +12,7 @@ import { Role } from './types';
 const Login = lazy(() => import('./pages/Login'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Tasks = lazy(() => import('./pages/Tasks'));
+const Attendance = lazy(() => import('./pages/Attendance'));
 const EmployeeManagement = lazy(() => import('./pages/EmployeeManagement'));
 const Chat = lazy(() => import('./pages/Chat'));
 const Reports = lazy(() => import('./pages/Reports'));
@@ -50,6 +53,7 @@ const AppRoutes = () => {
             
             <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/tasks" element={<ProtectedRoute><Tasks /></ProtectedRoute>} />
+            <Route path="/attendance" element={<ProtectedRoute><Attendance /></ProtectedRoute>} />
             <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
             
             {/* Admin & HR Only */}
@@ -88,6 +92,7 @@ const AppRoutes = () => {
 function App() {
   return (
     <ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
     <HashRouter>
       <AuthProvider>
         <ThemeProvider>
@@ -97,6 +102,7 @@ function App() {
         </ThemeProvider>
         </AuthProvider>
       </HashRouter>
+    </QueryClientProvider>
     </ErrorBoundary>
   );
 }

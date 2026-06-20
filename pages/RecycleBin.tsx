@@ -1,94 +1,33 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
-import api from '../services/api';
-import { RecycleBinItem, Role } from '../types';
+import { Role } from '../types';
 import { Trash2, RotateCcw, AlertOctagon, User, FileText, CheckSquare, DollarSign, Building, Clock, Star } from 'lucide-react';
 import { DeletionModal } from '../components/DeletionModal';
 import { TableSkeleton } from '../components/Skeleton';
-
-const MODEL_TYPE_MAP: Record<string, string> = {
-  'App\\Models\\User': 'USER',
-  'App\\Models\\Task': 'TASK',
-  'App\\Models\\SalaryRecord': 'FINANCE',
-  'App\\Models\\Department': 'DEPARTMENT',
-  'App\\Models\\AttendanceRecord': 'ATTENDANCE',
-  'App\\Models\\PerformanceReview': 'REVIEW',
-};
-
-function toFrontendItem(data: any): RecycleBinItem {
-  const model = data.deleted_model || '';
-  const type = MODEL_TYPE_MAP[model] || 'REPORT';
-  const originalData = data.deleted_data || {};
-
-  let label = 'Unknown Item';
-  if (type === 'USER') label = originalData.fullname || originalData.name || '';
-  else if (type === 'TASK') label = originalData.title || '';
-  else if (type === 'FINANCE') label = `${originalData.transaction_type || 'Transaction'} - $${originalData.amount || 0}`;
-  else if (type === 'DEPARTMENT') label = originalData.name || '';
-  else if (type === 'ATTENDANCE') label = `${originalData.action || 'Check'} - ${originalData.date || ''}`;
-  else if (type === 'REVIEW') label = originalData.title || `Review #${data.deleted_item_id || ''}`;
-
-  return {
-    id: String(data.id),
-    originalId: String(data.deleted_item_id),
-    type: type as RecycleBinItem['type'],
-    data: { ...originalData, _label: label, _model: model },
-    deletedBy: data.user?.fullname || data.deleted_by || 'Unknown',
-    deletedById: String(data.deleted_by || ''),
-    deletedAt: data.deleted_at || data.created_at || '',
-  };
-}
-
-function getModelName(item: RecycleBinItem): string {
-  const model = item.data?._model || '';
-  const parts = model.split('\\');
-  return parts[parts.length - 1] || 'User';
-}
+import { useRecycleBin, useRestoreItem, useForceDeleteItem } from '../hooks/queries/useRecycleBin';
 
 export const RecycleBin = () => {
   const { t } = useLanguage();
   const { user } = useAuth();
-  const [items, setItems] = useState<RecycleBinItem[]>([]);
+  const { data: items = [], isLoading } = useRecycleBin();
+  const restoreItem = useRestoreItem();
+  const forceDeleteItem = useForceDeleteItem();
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<RecycleBinItem | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [selectedItem, setSelectedItem] = useState<any>(null);
 
   const isAdmin = user?.role === Role.ADMIN;
 
-  useEffect(() => {
-    const abortController = new AbortController();
-    refresh(abortController.signal);
-    return () => abortController.abort();
-  }, []);
-
-  const refresh = async (signal?: AbortSignal) => {
-    try {
-      setLoading(true);
-      const res = await api.get('/recycle-bin', { signal });
-      const data = res.data.data;
-      const arr: any[] = Array.isArray(data) ? data : (data?.data || []);
-      setItems(arr.map(toFrontendItem));
-    } catch (err: any) {
-      if (err?.name === 'CanceledError') return;
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRestore = async (item: RecycleBinItem) => {
+  const handleRestore = async (item: any) => {
     if (!isAdmin) return;
     try {
-      const modelName = getModelName(item);
-      await api.post(`/recycle-bin/${modelName}/${item.originalId}/restore`);
-      await refresh();
+      await restoreItem.mutateAsync(item);
     } catch {
       alert('Failed to restore item');
     }
   };
 
-  const initiateHardDelete = (item: RecycleBinItem) => {
+  const initiateHardDelete = (item: any) => {
     if (!isAdmin) return;
     setSelectedItem(item);
     setDeleteModalOpen(true);
@@ -97,11 +36,9 @@ export const RecycleBin = () => {
   const confirmHardDelete = async () => {
     if (!selectedItem || !user) return;
     try {
-      const modelName = getModelName(selectedItem);
-      await api.delete(`/recycle-bin/${modelName}/${selectedItem.originalId}/force`);
+      await forceDeleteItem.mutateAsync(selectedItem);
       setDeleteModalOpen(false);
       setSelectedItem(null);
-      await refresh();
     } catch {
       alert('Failed to permanently delete item');
     }
@@ -137,7 +74,7 @@ export const RecycleBin = () => {
            </div>
        )}
 
-       {loading ? (
+       {isLoading ? (
          <TableSkeleton rows={5} />
        ) : (
          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">

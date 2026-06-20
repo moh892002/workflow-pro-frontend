@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -7,6 +7,7 @@ import { User, Role, DEPARTMENTS, CredentialRequest, RequestType, RequestStatus 
 import { Plus, Trash2, Edit2, ShieldAlert, Key, Check, X, Camera, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { TableSkeleton } from '../components/Skeleton';
+import { useUsers, useDepartments, useCreateUser, useUpdateUser, useDeleteUser } from '../hooks/queries/useUsers';
 
 function toBackendUser(data: Partial<User>, password?: string, departmentId?: number | null) {
   const body: Record<string, any> = {
@@ -22,29 +23,22 @@ function toBackendUser(data: Partial<User>, password?: string, departmentId?: nu
   return body;
 }
 
-function toFrontendUser(data: any): User {
-  return {
-    id: String(data.id),
-    fullName: data.fullname || '',
-    username: data.username || '',
-    role: data.role || Role.EMPLOYEE,
-    department: data.department?.name || '',
-    salary: data.salary,
-    isActive: data.deleted_at === null,
-    profileImage: data.image_url || `https://ui-avatars.com/api/?name=${data.fullname}&background=random`,
-    jobTitle: data.job_title || '',
-    isBot: false,
-  };
-}
-
 export const EmployeeManagement = () => {
   const { t } = useLanguage();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { data: employees = [], isLoading } = useUsers();
+  const { data: departments = [] } = useDepartments();
+  const createUser = useCreateUser();
+  const updateUser = useUpdateUser();
+  const deleteUser = useDeleteUser();
 
-  const [employees, setEmployees] = useState<User[]>([]);
-  const [requests, setRequests] = useState<CredentialRequest[]>([]);
-  const [filteredEmployees, setFilteredEmployees] = useState<User[]>([]);
+  const [requests, setRequests] = useState<CredentialRequest[]>(() => {
+    if (user?.role === Role.ADMIN) {
+      return DB.requests.getAll().filter(r => r.status === RequestStatus.PENDING);
+    }
+    return [];
+  });
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isProcessRequestModalOpen, setIsProcessRequestModalOpen] = useState(false);
@@ -54,9 +48,7 @@ export const EmployeeManagement = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<CredentialRequest | null>(null);
   const [departmentFilter, setDepartmentFilter] = useState('');
-  const [departments, setDepartments] = useState<{ id: number; name: string }[]>([]);
   const [activeTab, setActiveTab] = useState<'employees' | 'requests'>('employees');
-  const [loading, setLoading] = useState(true);
 
   const initialFormState: Partial<User> = {
     role: Role.EMPLOYEE,
@@ -72,61 +64,16 @@ export const EmployeeManagement = () => {
   const isAdmin = user?.role === Role.ADMIN;
   const isHR = user?.role === Role.HR_MANAGER;
 
-  useEffect(() => {
-    if (user && !isAdmin && !isHR) {
-      navigate('/');
-    }
-  }, [user, isAdmin, isHR, navigate]);
+  const filteredEmployees = useMemo(() =>
+    departmentFilter ? employees.filter(e => e.department === departmentFilter) : employees,
+    [employees, departmentFilter]
+  );
 
-  const fetchEmployees = async (signal?: AbortSignal) => {
-    try {
-      setLoading(true);
-      const [usersRes, depsRes] = await Promise.all([
-        api.get('/users', { signal }),
-        api.get('/departments', { signal }),
-      ]);
-      const deptData = depsRes.data.data;
-      const deptList = Array.isArray(deptData) ? deptData : (deptData?.data || []);
-      setDepartments(deptList.map((d: any) => ({ id: d.id, name: d.name })));
-      const userData = usersRes.data.data;
-      const userList = Array.isArray(userData) ? userData : (userData?.data || []);
-      const mapped = userList.map(toFrontendUser);
-      setEmployees(mapped);
-      setFilteredEmployees(mapped);
-    } catch (err: any) {
-      if (err?.name === 'CanceledError') return;
-      setEmployees([]);
-      setFilteredEmployees([]);
-    } finally {
-      setLoading(false);
+  const refreshRequests = () => {
+    if (isAdmin) {
+      setRequests(DB.requests.getAll().filter(r => r.status === RequestStatus.PENDING));
     }
   };
-
-  const fetchRequests = () => {
-    if (!isAdmin) return;
-    const all = DB.requests.getAll().filter(r => r.status === RequestStatus.PENDING);
-    setRequests(all);
-  };
-
-  const refresh = () => {
-    fetchEmployees();
-    fetchRequests();
-  };
-
-  useEffect(() => {
-    const abortController = new AbortController();
-    fetchEmployees(abortController.signal);
-    fetchRequests();
-    return () => abortController.abort();
-  }, [user]);
-
-  useEffect(() => {
-    if (departmentFilter) {
-      setFilteredEmployees(employees.filter(e => e.department === departmentFilter));
-    } else {
-      setFilteredEmployees(employees);
-    }
-  }, [departmentFilter, employees]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -149,6 +96,12 @@ export const EmployeeManagement = () => {
     }
   };
 
+  useEffect(() => {
+    if (user && !isAdmin && !isHR) {
+      navigate('/');
+    }
+  }, [user, isAdmin, isHR, navigate]);
+
   const handleOpenAdd = () => {
     setEditingId(null);
     setFormData(initialFormState);
@@ -169,8 +122,7 @@ export const EmployeeManagement = () => {
     if (isAdmin) {
       if (!confirm("Are you sure you want to delete this employee?")) return;
       try {
-        await api.delete(`/users/${emp.id}`);
-        refresh();
+        await deleteUser.mutateAsync(emp.id);
       } catch {
         alert('Failed to delete employee');
       }
@@ -200,7 +152,7 @@ export const EmployeeManagement = () => {
     alert(t('delete_request_sent'));
     setIsDeleteRequestModalOpen(false);
     setEmployeeToDelete(null);
-    refresh();
+    refreshRequests();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -211,13 +163,16 @@ export const EmployeeManagement = () => {
       const deptId = departments.find(d => d.name === formData.department)?.id;
 
       if (editingId) {
-        await api.put(`/users/${editingId}`, {
-          fullname: formData.fullName,
-          job_title: formData.jobTitle,
-          role: formData.role,
-          salary: formData.salary,
-          username: formData.username,
-          department_id: deptId,
+        await updateUser.mutateAsync({
+          id: editingId,
+          data: {
+            fullname: formData.fullName,
+            job_title: formData.jobTitle,
+            role: formData.role,
+            salary: formData.salary,
+            username: formData.username,
+            department_id: deptId,
+          },
         });
       } else {
         if (!formData.username || !password) {
@@ -225,12 +180,9 @@ export const EmployeeManagement = () => {
           return;
         }
         const payload = toBackendUser(formData, password, deptId);
-        const res = await api.post('/users', payload);
-        const newUser = toFrontendUser(res.data.data || res.data);
-        await api.put(`/users/${newUser.id}`, { image: newUser.profileImage });
+        await createUser.mutateAsync(payload);
       }
       setIsModalOpen(false);
-      refresh();
     } catch {
       alert('Failed to save employee');
     }
@@ -239,7 +191,7 @@ export const EmployeeManagement = () => {
   const handleProcessRequest = (req: CredentialRequest, approved: boolean) => {
     if (!approved) {
       DB.requests.update({ ...req, status: RequestStatus.REJECTED, resolvedAt: new Date().toISOString() });
-      refresh();
+      refreshRequests();
       return;
     }
 
@@ -247,7 +199,7 @@ export const EmployeeManagement = () => {
       if (req.targetUserId && user) {
         DB.users.delete(req.targetUserId, user);
         DB.requests.update({ ...req, status: RequestStatus.APPROVED, resolvedAt: new Date().toISOString() });
-        refresh();
+        refreshRequests();
       }
     } else {
       setSelectedRequest(req);
@@ -276,7 +228,7 @@ export const EmployeeManagement = () => {
       DB.requests.update({ ...selectedRequest, status: RequestStatus.APPROVED, resolvedAt: new Date().toISOString() });
 
       setIsProcessRequestModalOpen(false);
-      refresh();
+      refreshRequests();
     }
   };
 
@@ -314,7 +266,7 @@ export const EmployeeManagement = () => {
         </div>
       </div>
 
-      {loading ? (
+      {isLoading ? (
         <TableSkeleton rows={6} />
       ) : activeTab === 'employees' && (
         <>
