@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -43,7 +43,7 @@ function toFrontendTask(data: any): Task {
     title: data.title || '',
     description: data.description || '',
     assignedToId: data.assigned_to ? String(data.assigned_to) : '',
-    assignedById: '',
+    assignedToName: data.user?.fullname || 'Unknown',
     priority: PRIORITY_MAP[data.priority] || TaskPriority.MEDIUM,
     status: computedStatus,
     deadline,
@@ -67,10 +67,11 @@ export const Tasks = () => {
   const { t } = useLanguage();
   const { user } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [filter, setFilter] = useState('');
   const [loading, setLoading] = useState(true);
+  const [assignableUsers, setAssignableUsers] = useState<User[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
 
   const [newTask, setNewTask] = useState<Partial<Task>>({
     priority: TaskPriority.MEDIUM,
@@ -80,36 +81,39 @@ export const Tasks = () => {
   const canCreate = user?.role === Role.ADMIN || user?.role === Role.HR_MANAGER || user?.role === Role.OPS_MANAGER;
   const isAdmin = user?.role === Role.ADMIN;
 
-  function toFrontendUser(data: any): User {
-    return {
-      id: String(data.id),
-      fullName: data.fullname || '',
-      username: data.username || '',
-      role: data.role || Role.EMPLOYEE,
-      department: data.department?.name || '',
-      salary: data.salary,
-      isActive: data.deleted_at === null,
-      profileImage: data.image_url || `https://ui-avatars.com/api/?name=${data.fullname}&background=random`,
-      jobTitle: data.job_title || '',
-      isBot: false,
-    };
-  }
+  const fetchAssignableUsers = useCallback(async () => {
+    setLoadingUsers(true);
+    try {
+      const res = await api.get('/users');
+      const mapped = (res.data.data || []).map((u: any) => ({
+        id: String(u.id),
+        fullName: u.fullname || '',
+        username: u.username || '',
+        role: u.role || Role.EMPLOYEE,
+        department: u.department?.name || '',
+        salary: u.salary,
+        isActive: u.deleted_at === null,
+        profileImage: u.image_url || `https://ui-avatars.com/api/?name=${u.fullname}&background=random`,
+        jobTitle: u.job_title || '',
+        isBot: false,
+      }));
+      setAssignableUsers(mapped);
+    } catch {
+      setAssignableUsers([]);
+    } finally {
+      setLoadingUsers(false);
+    }
+  }, []);
 
   const refreshData = async (signal?: AbortSignal) => {
     try {
       setLoading(true);
-      const [tasksRes, usersRes] = await Promise.all([
-        api.get('/tasks', { signal }),
-        api.get('/users', { signal }),
-      ]);
+      const tasksRes = await api.get('/tasks', { signal });
       const mappedTasks = (tasksRes.data.data || []).map(toFrontendTask);
-      const mappedUsers = (usersRes.data.data || []).map(toFrontendUser);
       setTasks(mappedTasks);
-      setUsers(mappedUsers);
     } catch (err: any) {
       if (err?.name === 'CanceledError') return;
       setTasks([]);
-      setUsers([]);
     } finally {
       setLoading(false);
     }
@@ -176,7 +180,7 @@ export const Tasks = () => {
   const filteredTasks = useMemo(() =>
     tasks.filter(task =>
       task.title.toLowerCase().includes(filter.toLowerCase()) &&
-      (user?.role === Role.ADMIN || task.assignedToId === user?.id || task.assignedById === user?.id)
+      (user?.role === Role.ADMIN || task.assignedToId === user?.id)
     ),
     [tasks, filter, user]
   );
@@ -209,8 +213,8 @@ export const Tasks = () => {
     <div>
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold text-slate-800 dark:text-white">{t('tasks')}</h2>
-        {canCreate && (
-          <button onClick={() => setIsModalOpen(true)} className="bg-primary hover:bg-primary-light text-white px-4 py-2 rounded-lg flex items-center gap-2 transition shadow-lg shadow-blue-900/20">
+          {canCreate && (
+          <button onClick={() => { setIsModalOpen(true); fetchAssignableUsers(); }} className="bg-primary hover:bg-primary-light text-white px-4 py-2 rounded-lg flex items-center gap-2 transition shadow-lg shadow-blue-900/20">
             <Plus size={20} />
             {t('create_task')}
           </button>
@@ -234,54 +238,51 @@ export const Tasks = () => {
         <TableSkeleton rows={6} />
       ) : (
         <div className="grid gap-4">
-          {filteredTasks.map(task => {
-              const assignee = users.find(u => u.id === task.assignedToId);
-              return (
-                  <div key={task.id} className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition">
-                      <div className="flex justify-between items-start mb-4">
-                          <div>
-                              <span className={`text-xs font-bold px-2 py-1 rounded-full border ${getPriorityColor(task.priority)}`}>
-                                  {task.priority}
-                              </span>
-                              <h3 className="text-lg font-bold text-slate-800 dark:text-white mt-2">{task.title}</h3>
-                          </div>
-                          <div className="flex flex-col items-end gap-2">
-                              <div className="flex items-center gap-2">
-                                  <span className={`text-xs font-bold px-3 py-1 rounded-md border shadow-sm ${getStatusColor(task.status)}`}>
-                                      {task.status.replace('_', ' ')}
-                                  </span>
-                                  {isAdmin && (
-                                      <button onClick={() => handleDelete(task.id)} className="p-1 text-slate-400 hover:text-red-500 transition">
-                                          <Trash2 size={16} />
-                                      </button>
-                                  )}
-                              </div>
-
-                              <select
-                                  value={STATUS_REVERSE[task.status] || 'pending'}
-                                  onChange={(e) => handleStatusChange(task.id, STATUS_MAP[e.target.value] || TaskStatus.PENDING)}
-                                  className="bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded px-2 py-1 text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:border-accent"
-                              >
-                                  <option value="pending">{t('pending')}</option>
-                                  <option value="in_progress">{t('in_progress')}</option>
-                                  <option value="completed">{t('completed')}</option>
-                              </select>
-                          </div>
+          {filteredTasks.map(task => (
+              <div key={task.id} className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition">
+                  <div className="flex justify-between items-start mb-4">
+                      <div>
+                          <span className={`text-xs font-bold px-2 py-1 rounded-full border ${getPriorityColor(task.priority)}`}>
+                              {task.priority}
+                          </span>
+                          <h3 className="text-lg font-bold text-slate-800 dark:text-white mt-2">{task.title}</h3>
                       </div>
-                      <p className="text-slate-600 dark:text-slate-300 mb-4">{task.description}</p>
-                      <div className="flex items-center gap-6 text-sm text-slate-500 dark:text-slate-400 border-t border-slate-50 dark:border-slate-700 pt-4">
+                      <div className="flex flex-col items-end gap-2">
                           <div className="flex items-center gap-2">
-                              <UserIcon size={16} />
-                              <span>{assignee?.fullName || 'Unknown'}</span>
+                              <span className={`text-xs font-bold px-3 py-1 rounded-md border shadow-sm ${getStatusColor(task.status)}`}>
+                                  {task.status.replace('_', ' ')}
+                              </span>
+                              {isAdmin && (
+                                  <button onClick={() => handleDelete(task.id)} className="p-1 text-slate-400 hover:text-red-500 transition">
+                                      <Trash2 size={16} />
+                                  </button>
+                              )}
                           </div>
-                          <div className="flex items-center gap-2">
-                              <Calendar size={16} />
-                              <span>{new Date(task.deadline).toLocaleDateString()}</span>
-                          </div>
+
+                          <select
+                              value={STATUS_REVERSE[task.status] || 'pending'}
+                              onChange={(e) => handleStatusChange(task.id, STATUS_MAP[e.target.value] || TaskStatus.PENDING)}
+                              className="bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded px-2 py-1 text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:border-accent"
+                          >
+                              <option value="pending">{t('pending')}</option>
+                              <option value="in_progress">{t('in_progress')}</option>
+                              <option value="completed">{t('completed')}</option>
+                          </select>
                       </div>
                   </div>
-              )
-          })}
+                  <p className="text-slate-600 dark:text-slate-300 mb-4">{task.description}</p>
+                  <div className="flex items-center gap-6 text-sm text-slate-500 dark:text-slate-400 border-t border-slate-50 dark:border-slate-700 pt-4">
+                      <div className="flex items-center gap-2">
+                          <UserIcon size={16} />
+                          <span>{task.assignedToName}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                          <Calendar size={16} />
+                          <span>{new Date(task.deadline).toLocaleDateString()}</span>
+                      </div>
+                  </div>
+              </div>
+          ))}
         </div>
       )}
 
@@ -311,8 +312,8 @@ export const Tasks = () => {
                 <div>
                   <label className="block text-sm font-medium mb-1 text-slate-700 dark:text-slate-300">{t('assign_to')}</label>
                   <select required className="w-full border dark:border-slate-600 rounded-lg p-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" onChange={e => setNewTask({...newTask, assignedToId: e.target.value})}>
-                    <option value="">Select Employee</option>
-                    {users.filter(u => u.role !== Role.ADMIN).map(u => (
+                    <option value="">{loadingUsers ? 'Loading...' : 'Select Employee'}</option>
+                    {assignableUsers.filter(u => u.role !== Role.ADMIN).map(u => (
                       <option key={u.id} value={u.id}>{u.fullName}</option>
                     ))}
                   </select>

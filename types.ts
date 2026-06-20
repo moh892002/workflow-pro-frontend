@@ -81,7 +81,7 @@ export interface Task {
   title: string;
   description: string;
   assignedToId: string;
-  assignedById: string;
+  assignedToName: string;
   priority: TaskPriority;
   status: TaskStatus;
   deadline: string; 

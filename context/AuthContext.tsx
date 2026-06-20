@@ -104,7 +104,7 @@ export const AuthProvider = ({ children }: { children?: ReactNode }) => {
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
       const res = await api.post("/login", { email, password });
-      const { token, user: backendUser } = res.data;
+      const { token, user: backendUser } = res.data.data;
 
       localStorage.setItem("wfp_token", token);
       const mapped = mapBackendUser(backendUser);

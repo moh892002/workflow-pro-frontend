@@ -22,7 +22,7 @@ function toFrontendTask(data: any): Task {
     title: data.title || '',
     description: data.description || '',
     assignedToId: data.assigned_to ? String(data.assigned_to) : '',
-    assignedById: '',
+    assignedToName: data.user?.fullname || 'Unknown',
     priority: priorityMap[data.priority] || 'MEDIUM',
     status: computedStatus,
     deadline,
